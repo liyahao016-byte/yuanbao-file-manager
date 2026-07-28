@@ -1,0 +1,92 @@
+:root {
+  --sidebar-width: 240px;
+  --header-height: 34px;
+  
+  /* Colors */
+  --bg-sidebar: #f8f8f9;
+  --bg-main: #ffffff;
+  --bg-active: #e6f6ed; /* Light green for active sidebar items */
+  --text-primary: #1a1a1a;
+  --text-secondary: #737373;
+  --border-color: #f0f0f0;
+  --icon-color: #999999;
+  --icon-active: #00b96b; /* Green */
+  
+  /* Tag Colors */
+  --tag-orange: #ff9d00;
+  --tag-green: #00b96b;
+  --tag-red: #ff4d4f;
+  --tag-purple: #722ed1;
+
+  /* Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  color: var(--text-primary);
+  background-color: var(--bg-main);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body.transparent-window {
+  background-color: transparent !important;
+}
+
+/* Base interactive elements */
+ul, li {
+  list-style: none;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Global Utility Classes */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.flex-1 { flex: 1; }
+.h-full { height: 100%; }
+.w-full { width: 100%; }
+
+/* QQ-style floating drop zone animation */
+@keyframes dropzone-appear {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(30px) scale(0.85); }
+  70%  { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1.02); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0)   scale(1); }
+}
+
+@keyframes dropzone-appear-right {
+  0%   { opacity: 0; transform: translateY(20px) scale(0.92); }
+  70%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* Smart Folder pulse highlight animation */
+@keyframes pulse-highlight {
+  0%   { background: rgba(0, 185, 107, 0.35); box-shadow: 0 0 16px rgba(0, 185, 107, 0.6); }
+  50%  { background: rgba(0, 185, 107, 0.18); box-shadow: 0 0 20px rgba(0, 185, 107, 0.8); }
+  100% { background: transparent; box-shadow: none; }
+}
+
+.smart-folder-pulse {
+  animation: pulse-highlight 1.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 8px;
+}

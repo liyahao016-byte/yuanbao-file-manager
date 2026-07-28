@@ -1,0 +1,9 @@
+[package]
+name = "icon_tester"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.22.1"
+cocoa = "0.26.1"
+objc = "0.2.7"

@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html>
+<body>
+<div draggable="true" ondragstart="event.dataTransfer.setData('tagColor', 'orange');" style="width:100px;height:100px;background:red;">Drag me</div>
+<div ondragover="event.preventDefault();" ondrop="alert(event.dataTransfer.getData('tagColor') + ' / ' + event.dataTransfer.getData('tagcolor'));" style="width:100px;height:100px;background:blue;">Drop here</div>
+</body>
+</html>
