@@ -248,91 +248,7 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
         gap: '10px',
       }}
     >
-      {/* 0. AI Dynamic Cluster Creation Input Bar (Compact Height) */}
-      {toastMessage && (
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            color: '#ffffff',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            fontSize: '12px',
-            fontWeight: '600',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
-            animation: 'fadeIn 0.2s ease-in-out',
-          }}
-        >
-          <span>{toastMessage}</span>
-          <span
-            onClick={() => setToastMessage(null)}
-            style={{ cursor: 'pointer', opacity: 0.8, fontSize: '14px', marginLeft: '12px' }}
-          >
-            ✕
-          </span>
-        </div>
-      )}
-
-      <div
-        style={{
-          background: '#ffffff',
-          borderRadius: '10px',
-          padding: '6px 14px',
-          height: '36px',
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}
-      >
-        <span style={{ fontSize: '15px' }}>🔍</span>
-        <input
-          type="text"
-          value={aiInput}
-          onChange={(e) => setAiInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleCreateAiCluster();
-            }
-          }}
-          placeholder="输入关键主题词或自然语言来生成专属簇"
-          style={{
-            flex: 1,
-            border: 'none',
-            outline: 'none',
-            fontSize: '13px',
-            color: '#1e293b',
-            background: 'transparent',
-          }}
-        />
-        <button
-          type="button"
-          onClick={handleCreateAiCluster}
-          disabled={isGenerating || !aiInput.trim()}
-          style={{
-            background: 'var(--tag-green)',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '4px 12px',
-            fontSize: '12px',
-            fontWeight: '600',
-            cursor: isGenerating || !aiInput.trim() ? 'not-allowed' : 'pointer',
-            opacity: isGenerating || !aiInput.trim() ? 0.6 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-          }}
-        >
-          {isGenerating ? '⏳ 生成中...' : '✨ AI 生成簇'}
-        </button>
-      </div>
-
-      {/* Page Header Banner (Single Ultra-Compact Row) */}
+      {/* 1. 最上方：Page Header Banner (紧挨顶部标签页栏 TabBar) */}
       <div
         style={{
           background: '#ffffff',
@@ -398,8 +314,93 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
         </div>
       </div>
 
-      {/* 1. TOP SECTION: 4 Fixed Format Ultra-Lightweight Entry Strip */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+      {/* Toast 提报信息 */}
+      {toastMessage && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: '#ffffff',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
+            animation: 'fadeIn 0.2s ease-in-out',
+          }}
+        >
+          <span>{toastMessage}</span>
+          <span
+            onClick={() => setToastMessage(null)}
+            style={{ cursor: 'pointer', opacity: 0.8, fontSize: '14px', marginLeft: '12px' }}
+          >
+            ✕
+          </span>
+        </div>
+      )}
+
+      {/* 2. 第二位：搜索生成簇的输入框 */}
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: '10px',
+          padding: '6px 14px',
+          height: '36px',
+          border: '1px solid #cbd5e1',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}
+      >
+        <span style={{ fontSize: '15px' }}>🔍</span>
+        <input
+          type="text"
+          value={aiInput}
+          onChange={(e) => setAiInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleCreateAiCluster();
+            }
+          }}
+          placeholder="输入关键主题词或自然语言来生成专属簇"
+          style={{
+            flex: 1,
+            border: 'none',
+            outline: 'none',
+            fontSize: '13px',
+            color: '#1e293b',
+            background: 'transparent',
+          }}
+        />
+        <button
+          type="button"
+          onClick={handleCreateAiCluster}
+          disabled={isGenerating || !aiInput.trim()}
+          style={{
+            background: 'var(--tag-green)',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '4px 12px',
+            fontSize: '12px',
+            fontWeight: '600',
+            cursor: isGenerating || !aiInput.trim() ? 'not-allowed' : 'pointer',
+            opacity: isGenerating || !aiInput.trim() ? 0.6 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
+          {isGenerating ? '⏳ 生成中...' : '✨ AI 生成簇'}
+        </button>
+      </div>
+
+      {/* 3. 第三位：4 大基础格式速查入口 */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px 16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
         <div style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
           <span>基础格式速查:</span>
         </div>
@@ -444,12 +445,8 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
         </div>
       </div>
 
-      {/* 2. MAIN SECTION: Theme & Aggregated Clusters (Draggable & Customizable Grid) */}
+      {/* 4. MAIN SECTION: 主体文件簇卡片 (已删除冗余标题，最大化释放空间) */}
       <div>
-        <div style={{ fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '12px', display: 'flex', alignItems: 'center' }}>
-          <span>AI 语义主题与打包聚合簇</span>
-        </div>
-
         {sortedThemeClusters.length === 0 ? (
           <div style={{ background: '#ffffff', padding: '40px', borderRadius: '16px', textAlign: 'center', color: '#94a3b8', border: '1px dashed #cbd5e1' }}>
             暂无更多主题簇卡片
