@@ -148,13 +148,13 @@ export default function SmartFolderCard({
     >
       {/* Top Banner / Title & Action Controls */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-        <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1, minWidth: 0 }}>
+          <span style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {cluster.name}
-          </div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+          </span>
+          <span style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
             共 {totalCount} 个文件
-          </div>
+          </span>
         </div>
 
         {/* Action Controls Group */}
@@ -259,7 +259,7 @@ export default function SmartFolderCard({
         </div>
       </div>
 
-      {/* 方案 4: 2 Column Micro-Pills (双列高密精细微型条展示层) */}
+      {/* 方案 4: 2 Column Micro-Pills (双列高密精细微型条展示层，带微型滚动条) */}
       <div style={{ marginTop: '2px' }}>
         {isLoading ? (
           <div style={{ fontSize: '12px', color: '#aaa', padding: '12px 0' }}>加载预览中...</div>
@@ -271,8 +271,11 @@ export default function SmartFolderCard({
               display: 'grid',
               gridTemplateColumns: 'repeat(2, 1fr)',
               gap: '5px 8px',
+              maxHeight: '96px',
+              overflowY: 'auto',
               paddingRight: '2px',
             }}
+            className="custom-sidebar-scroll"
           >
             {files.map((file) => (
               <div
