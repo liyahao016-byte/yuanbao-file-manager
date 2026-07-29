@@ -59,6 +59,11 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
   }, [deletedIds]);
 
   useEffect(() => {
+    localStorage.setItem('smart_custom_clusters', JSON.stringify(customClusters));
+    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+  }, [customClusters]);
+
+  useEffect(() => {
     localStorage.setItem('smart_cluster_order', JSON.stringify(clusterOrder));
     window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
   }, [clusterOrder]);
@@ -168,7 +173,7 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
     if (c.category_type === 'format' || c.id.startsWith('smart_format_') || deletedIds.includes(c.id)) {
       return false;
     }
-    const isCustom = c.category_type === 'custom' || c.id.startsWith('cluster_custom_');
+    const isCustom = c.category_type === 'custom' || c.id.startsWith('cluster_') || customClusters.some(cc => cc.id === c.id);
     if (isCustom) {
       return (c.count || 0) >= 1;
     } else {
@@ -188,8 +193,8 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
     }
 
     // Unpinned layer: Custom search-generated clusters come FIRST right after pinned items!
-    const isACustom = a.category_type === 'custom' || a.id.startsWith('cluster_custom_');
-    const isBCustom = b.category_type === 'custom' || b.id.startsWith('cluster_custom_');
+    const isACustom = a.category_type === 'custom' || a.id.startsWith('cluster_') || customClusters.some(cc => cc.id === a.id);
+    const isBCustom = b.category_type === 'custom' || b.id.startsWith('cluster_') || customClusters.some(cc => cc.id === b.id);
 
     if (isACustom && !isBCustom) return -1;
     if (!isACustom && isBCustom) return 1;
@@ -197,6 +202,8 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
       const idxA = customClusters.findIndex((c) => c.id === a.id);
       const idxB = customClusters.findIndex((c) => c.id === b.id);
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
     }
 
     const clicksA = clickStats[a.id] || 0;
