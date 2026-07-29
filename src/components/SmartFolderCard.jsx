@@ -37,18 +37,75 @@ export default function SmartFolderCard({
         .then((res) => {
           if (isMounted && res) {
             setTotalCount(res.length);
-            setFiles(res.slice(0, 8)); // Quick preview top 8 items
+            setFiles(res.slice(0, 12)); // 方案 4: 精细双列微型条展示 Top 12 个项目
           }
         })
         .catch(console.error)
         .finally(() => {
           if (isMounted) setIsLoading(false);
         });
+    } else {
+      // 浏览器 Web 预览环境降级 Mock 列表 (按簇提供 10~12 个微型条数据)
+      setIsLoading(false);
+      const mockFilesMap = {
+        '简历': [
+          { id: 'm1', name: '李雅浩简历-腾讯云.pdf', fileType: 'pdf' },
+          { id: 'm2', name: '李明五简历.docx', fileType: 'doc' },
+          { id: 'm3', name: '李明四简历.docx', fileType: 'doc' },
+          { id: 'm4', name: '高级前端工程师_李明.pdf', fileType: 'pdf' },
+          { id: 'm5', name: '产品经理岗位履历.pdf', fileType: 'pdf' },
+          { id: 'm6', name: '实习生个人简历模板.docx', fileType: 'doc' },
+          { id: 'm7', name: '技术总监校招简历.pdf', fileType: 'pdf' },
+          { id: 'm8', name: '英文简历_Resume_2026.pdf', fileType: 'pdf' },
+          { id: 'm9', name: '李雅浩作品集列表.pdf', fileType: 'pdf' },
+          { id: 'm10', name: '设计组招聘复试表.xlsx', fileType: 'xls' }
+        ],
+        '数据报表': [
+          { id: 'd1', name: 'image_提取表格.xlsx', fileType: 'xls' },
+          { id: 'd2', name: 'TRD_BwardQuotation.xlsx', fileType: 'xls' },
+          { id: 'd3', name: '2026Q1营收数据明细.xlsx', fileType: 'xls' },
+          { id: 'd4', name: '年度资产负债表_核算.xlsx', fileType: 'xls' },
+          { id: 'd5', name: '部门预算支出统计表.xlsx', fileType: 'xls' },
+          { id: 'd6', name: '用户留存与活跃数据.csv', fileType: 'csv' },
+          { id: 'd7', name: '核心指标月度复盘.xlsx', fileType: 'xls' },
+          { id: 'd8', name: '财务审计复核汇总.xlsx', fileType: 'xls' },
+          { id: 'd9', name: '渠道投放ROI分析表.xlsx', fileType: 'xls' },
+          { id: 'd10', name: '员工薪酬结构总表.xlsx', fileType: 'xls' }
+        ],
+        '方案报告': [
+          { id: 'r1', name: '文件搜索调研报告 (1).doc', fileType: 'doc' },
+          { id: 'r2', name: '李雅浩开题报告表.pdf', fileType: 'pdf' },
+          { id: 'r3', name: '元宝文件管理器_白皮书.md', fileType: 'md' },
+          { id: 'r4', name: '文件阵地页四种清理方案.doc', fileType: 'doc' },
+          { id: 'r5', name: '智能聚类算法落地评估.pdf', fileType: 'pdf' },
+          { id: 'r6', name: '端侧向量数据库性能报告.pdf', fileType: 'pdf' },
+          { id: 'r7', name: '竞品分析与产品路演汇报.pptx', fileType: 'pptx' },
+          { id: 'r8', name: '系统安全与隐私合规白皮书.pdf', fileType: 'pdf' },
+          { id: 'r9', name: 'UI设计交互升级总结.docx', fileType: 'doc' },
+          { id: 'r10', name: '项目一期里程碑验收报告.pdf', fileType: 'pdf' }
+        ]
+      };
+
+      const matchedKey = Object.keys(mockFilesMap).find(k => cluster.name.includes(k));
+      const defaultList = [
+        { id: 'f1', name: `${cluster.name}_核心文档_01.pdf`, fileType: 'pdf' },
+        { id: 'f2', name: `${cluster.name}_汇总数据_02.xlsx`, fileType: 'xls' },
+        { id: 'f3', name: `${cluster.name}_设计初稿_03.png`, fileType: 'png' },
+        { id: 'f4', name: `${cluster.name}_会议纪要_04.docx`, fileType: 'doc' },
+        { id: 'f5', name: `${cluster.name}_分析报告_05.pdf`, fileType: 'pdf' },
+        { id: 'f6', name: `${cluster.name}_配置规则_06.json`, fileType: 'code' },
+        { id: 'f7', name: `${cluster.name}_资产清单_07.xlsx`, fileType: 'xls' },
+        { id: 'f8', name: `${cluster.name}_演示文稿_08.pptx`, fileType: 'pptx' },
+        { id: 'f9', name: `${cluster.name}_交付附件_09.zip`, fileType: 'zip' },
+        { id: 'f10', name: `${cluster.name}_说明指南_10.md`, fileType: 'md' }
+      ];
+
+      setFiles(matchedKey ? mockFilesMap[matchedKey] : defaultList);
     }
     return () => {
       isMounted = false;
     };
-  }, [cluster.id, cluster.path]);
+  }, [cluster.id, cluster.path, cluster.name]);
 
   const getClusterIcon = (name, categoryType) => {
     if (categoryType === 'format' || cluster.id.startsWith('smart_format_')) {
@@ -80,10 +137,10 @@ export default function SmartFolderCard({
         borderRadius: '16px',
         border: isPinned ? '2px solid var(--tag-green)' : '1px solid var(--border-color)',
         boxShadow: isPinned ? '0 8px 24px rgba(0,185,107,0.15)' : '0 4px 16px rgba(0,0,0,0.04)',
-        padding: '16px 20px',
+        padding: '14px 18px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
+        gap: '10px',
         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         cursor: isDraggable ? 'grab' : 'default',
         position: 'relative',
@@ -202,8 +259,8 @@ export default function SmartFolderCard({
         </div>
       </div>
 
-      {/* Inline Quick Preview Chips / Horizontal Bar */}
-      <div style={{ marginTop: '4px' }}>
+      {/* 方案 4: 2 Column Micro-Pills (双列高密精细微型条展示层) */}
+      <div style={{ marginTop: '2px' }}>
         {isLoading ? (
           <div style={{ fontSize: '12px', color: '#aaa', padding: '12px 0' }}>加载预览中...</div>
         ) : files.length === 0 ? (
@@ -212,11 +269,9 @@ export default function SmartFolderCard({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-              gap: '8px',
-              maxHeight: '130px',
-              overflowY: 'auto',
-              paddingRight: '4px',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '5px 8px',
+              paddingRight: '2px',
             }}
           >
             {files.map((file) => (
@@ -226,14 +281,16 @@ export default function SmartFolderCard({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 8px',
+                  gap: '5px',
+                  padding: '4px 7px',
                   background: '#f8fafc',
                   border: '1px solid #f1f5f9',
-                  borderRadius: '8px',
+                  borderRadius: '6px',
                   cursor: 'pointer',
-                  transition: 'all 0.15s ease',
+                  transition: 'all 0.12s ease',
                   overflow: 'hidden',
+                  height: '26px',
+                  boxSizing: 'border-box',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = '#f0f6ff';
@@ -244,7 +301,7 @@ export default function SmartFolderCard({
                   e.currentTarget.style.borderColor = '#f1f5f9';
                 }}
               >
-                <span style={{ fontSize: '16px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                   {getFileIcon(file.type || file.fileType)}
                 </span>
                 <span
@@ -255,6 +312,7 @@ export default function SmartFolderCard({
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
+                    lineHeight: '1.2'
                   }}
                   title={file.virtualName || file.name}
                 >
