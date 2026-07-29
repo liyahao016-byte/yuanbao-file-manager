@@ -47,17 +47,20 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
   const [aiInput, setAiInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Save state updates to localStorage
+  // Save state updates to localStorage and notify sidebar for real-time sync
   useEffect(() => {
     localStorage.setItem('smart_pinned_ids', JSON.stringify(pinnedIds));
+    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
   }, [pinnedIds]);
 
   useEffect(() => {
     localStorage.setItem('smart_deleted_ids', JSON.stringify(deletedIds));
+    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
   }, [deletedIds]);
 
   useEffect(() => {
     localStorage.setItem('smart_cluster_order', JSON.stringify(clusterOrder));
+    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
   }, [clusterOrder]);
 
   const handleTogglePin = (id) => {
