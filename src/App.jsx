@@ -424,54 +424,80 @@ function App() {
               </ul>
             ) : (
               <>
-                {/* 方案 A：独立微型滚动条容器 (Max-Height 220px Scrollable) */}
+                {/* 1. 浓缩图片、文档、表格、媒体这四个固定大类，占 1 行空间，固顶且不参与排序 */}
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '6px', padding: '0 2px' }}>
+                  {[
+                    { id: 'smart_format_image', name: '图片' },
+                    { id: 'smart_format_document', name: '文档' },
+                    { id: 'smart_format_excel', name: '表格' },
+                    { id: 'smart_format_media', name: '媒体' }
+                  ].map(item => {
+                    const isActive = currentNav === item.id && !searchQuery;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleNavClick(item.id)}
+                        style={{
+                          flex: 1,
+                          textAlign: 'center',
+                          padding: '3px 0',
+                          borderRadius: '4px',
+                          background: isActive ? 'var(--bg-active)' : '#f1f5f9',
+                          color: isActive ? 'var(--tag-green)' : '#475569',
+                          fontSize: '11px',
+                          fontWeight: isActive ? '600' : '500',
+                          cursor: 'pointer',
+                          border: isActive ? '1px solid rgba(0, 185, 107, 0.3)' : '1px solid #e2e8f0',
+                          transition: 'all 0.15s ease',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title={item.name}
+                      >
+                        {item.name}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 2. 独立微型滚动条容器 (Max-Height 220px Scrollable) */}
                 <div style={{ maxHeight: '220px', overflowY: 'auto', paddingRight: '2px' }} className="custom-sidebar-scroll">
                   <ul style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: 0, margin: 0, listStyle: 'none' }}>
                     {(() => {
-                      // 读取右侧固化的 Pin / Delete / Click / Custom 状态进行 100% 同步排序与过滤
                       const pinnedIds = JSON.parse(localStorage.getItem('smart_pinned_ids') || '[]');
                       const deletedIds = JSON.parse(localStorage.getItem('smart_deleted_ids') || '[]');
                       const clickStats = JSON.parse(localStorage.getItem('smart_cluster_clicks') || '{}');
                       const customClusters = JSON.parse(localStorage.getItem('smart_custom_clusters') || '[]');
 
-                      // 构造基础簇与分类映射
-                      const formatPreset = [
-                        { id: 'smart_format_image', name: '图片资产' },
-                        { id: 'smart_format_document', name: '文档资料' },
-                        { id: 'smart_format_excel', name: '表格数据' },
-                        { id: 'smart_format_media', name: '媒体资产' }
-                      ];
-
                       const rawStats = Array.isArray(smartStats) ? smartStats : [];
                       const allMap = new Map();
-                      formatPreset.forEach(f => allMap.set(f.id, f));
                       rawStats.forEach(s => allMap.set(s.id, s));
                       customClusters.forEach(c => allMap.set(c.id, c));
 
-                      // 1. 彻底过滤被用户解散/删除的簇 (deletedIds)
-                      const allList = Array.from(allMap.values()).filter(c => !deletedIds.includes(c.id));
+                      // 排除掉上面已经单行浓缩展示的 4 大格式类，并过滤被解散项
+                      const themeList = Array.from(allMap.values()).filter(c =>
+                        !c.id.startsWith('smart_format_') && c.category_type !== 'format' && !deletedIds.includes(c.id)
+                      );
 
-                      // 2. 完全与右侧齐平的动态排序算法
-                      const sortedList = [...allList].sort((a, b) => {
-                        const isAPinned = pinnedIds.includes(a.id);
-                        const isBPinned = pinnedIds.includes(b.id);
-                        if (isAPinned && !isBPinned) return -1;
-                        if (!isAPinned && isBPinned) return 1;
-                        if (isAPinned && isBPinned) return pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id);
+                      // 分拆为 【钉住项】 与 【普通排序项】
+                      const pinnedList = themeList
+                        .filter(c => pinnedIds.includes(c.id))
+                        .sort((a, b) => pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id));
 
-                        const isACustom = a.category_type === 'custom' || a.id.startsWith('cluster_custom_');
-                        const isBCustom = b.category_type === 'custom' || b.id.startsWith('cluster_custom_');
-                        if (isACustom && !isBCustom) return -1;
-                        if (!isACustom && isBCustom) return 1;
+                      const unpinnedList = themeList
+                        .filter(c => !pinnedIds.includes(c.id))
+                        .sort((a, b) => {
+                          const isACustom = a.category_type === 'custom' || a.id.startsWith('cluster_custom_');
+                          const isBCustom = b.category_type === 'custom' || b.id.startsWith('cluster_custom_');
+                          if (isACustom && !isBCustom) return -1;
+                          if (!isACustom && isBCustom) return 1;
 
-                        const clicksA = clickStats[a.id] || 0;
-                        const clicksB = clickStats[b.id] || 0;
-                        if (clicksA !== clicksB) return clicksB - clicksA;
-                        return 0;
-                      });
+                          const clicksA = clickStats[a.id] || 0;
+                          const clicksB = clickStats[b.id] || 0;
+                          if (clicksA !== clicksB) return clicksB - clicksA;
+                          return 0;
+                        });
 
-                      return sortedList.map(cluster => {
-                        const isPinned = pinnedIds.includes(cluster.id);
+                      const renderClusterItem = (cluster, isPinned) => {
                         const isActive = currentNav === cluster.id && !searchQuery;
                         return (
                           <li
@@ -501,7 +527,28 @@ function App() {
                             )}
                           </li>
                         );
-                      });
+                      };
+
+                      return (
+                        <>
+                          {/* 渲染钉住项列表 */}
+                          {pinnedList.map(cluster => renderClusterItem(cluster, true))}
+
+                          {/* 淡淡的红线分隔符：仅当存在钉住项时在钉住项下方呈现 */}
+                          {pinnedList.length > 0 && (
+                            <div
+                              style={{
+                                margin: '4px 2px 5px 2px',
+                                borderBottom: '1px dashed rgba(239, 68, 68, 0.35)',
+                              }}
+                              title="置顶分割线"
+                            />
+                          )}
+
+                          {/* 渲染普通未钉住项 */}
+                          {unpinnedList.map(cluster => renderClusterItem(cluster, false))}
+                        </>
+                      );
                     })()}
                   </ul>
                 </div>
