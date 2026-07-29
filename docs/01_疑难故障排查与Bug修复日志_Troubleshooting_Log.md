@@ -3,6 +3,37 @@
 此文档用于记录本项目开发过程中遇到的各类疑难杂症、底层 Bug 以及最终的修复方案。
 采用简短、结构化的结论形式，方便后续人类开发者或其他 AI 智能体快速了解项目坑点与经验。
 
+## [2026-07-29] 🐛 搜索生成 AI 动态簇后未在侧边栏 Tab 与全景卡片网格中实时渲染展示
+
+**🔍 现象描述:**
+在搜索输入框中输入主题词（如“股票”）成功提示 `✨ 成功生成专属簇卡片：「股票 相关资料」（收录 9 个匹配资产）`，但在主视图全景网格与左侧导航栏 Tab 中没有显示出来。
+
+**🧠 核心原因:**
+1. **侧边栏缺乏 `customClusters` 变更广播**：在 `SmartFolderView.jsx` 中，虽然为 `pinnedIds` 和 `deletedIds` 设置了 `useEffect` 触发 `smart_cluster_state_change` 广播，但**漏掉了对 `customClusters` 的监听**，导致侧边栏无法感知新创建的动态簇；
+2. **主题簇过滤逻辑偏狭**：在 `SmartFolderView.jsx` 中对自定义簇的判定为 `c.id.startsWith('cluster_custom_')`，而后端生成的动态簇 ID 可能带有 `cluster_` 或 `cluster_group_` 等其它前缀，导致新建簇被误判为传统簇（被 `>= 5` 个匹配文件的门槛过滤丢弃）。
+
+**✅ 解决方案:**
+1. **补全自定义簇状态广播**：在 [SmartFolderView.jsx](file:///Users/superli/Desktop/aiwork/文件管理器demo/src/components/SmartFolderView.jsx) 中增加对 `customClusters` 变动的 `useEffect` 监听，第一时间广播 `smart_cluster_state_change` 触发侧边栏重新渲染；
+2. **放宽自定义簇匹配算法**：将 `isCustom` 的判定升级为 `c.category_type === 'custom' || c.id.startsWith('cluster_') || customClusters.some(cc => cc.id === c.id)`，确保任何由用户生成的动态簇只要包含 `>= 1` 个匹配资产就全速在全景网格和侧边栏第一位挂载渲染！
+
+---
+
+## [2026-07-28] 🐛 自定义动态簇卡片点击进详情无数据与控制台错误清空修复
+
+**🔍 现象描述:**
+1. AI 生成自定义簇卡片后，点击进入卡片列表视图查不到文件或列表呈现异常；
+2. 控制台中偶尔存留未处理的 Promise Rejection 错误或拖拽收纳面板错误。
+
+**🧠 核心原因:**
+1. **簇详情 SQL 通配查询维度不全**：在 `src-tauri/src/lib.rs` 的 `get_files_by_cluster` 通配分支 `_ =>` 中，过去仅查询了 `lower(name) LIKE ... OR lower(path) LIKE ...`，未同步包含正文 AI 摘要 (`ai_suggestion`) 与标签 (`tags`)，导致包含内容/摘要匹配的文件进入列表页后匹配为空。
+2. **控制台缺乏 Unhandled Rejection 全局防御**：某些第三方 Shell/Dialog 的 Promise 抛错未在全局进行软拦截。
+
+**✅ 解决方案:**
+1. **多维模糊查询补齐**：在 [lib.rs](file:///Users/superli/Desktop/aiwork/文件管理器demo/src-tauri/src/lib.rs) 中将 `get_files_by_cluster` 的 `_ =>` 分支升级为全维度匹配 `ai_suggestion` 与 `tags`；
+2. **全局 Promise 错误防线**：在 [App.jsx](file:///Users/superli/Desktop/aiwork/文件管理器demo/src/App.jsx) 中添加了全局 `unhandledrejection` 与 `error` 软捕获防御，清洁 DevTools 控制台错误输出。
+
+---
+
 ## [2026-07-28] 🐛 控制台 Level 过滤致使 Console“无记录”与 UI 反馈增强
 
 **🔍 现象描述:**
