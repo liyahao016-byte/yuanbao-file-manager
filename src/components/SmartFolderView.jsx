@@ -139,6 +139,9 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
           const filtered = prev.filter((c) => c.id !== newCluster.id);
           const updated = [newCluster, ...filtered];
           localStorage.setItem('smart_custom_clusters', JSON.stringify(updated));
+          // 立即广播，不依赖 useEffect 延迟
+          window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+          console.error('[AI建簇] customClusters 已更新并广播:', updated.map(c => c.id));
           return updated;
         });
         setAiInput('');
@@ -164,6 +167,10 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
   customClusters.forEach(c => allStatsMap.set(c.id, c));
   const allStats = Array.from(allStatsMap.values());
 
+  // DEBUG: 每次渲染时打印当前 customClusters 状态
+  console.error('[渲染调试] customClusters state:', JSON.stringify(customClusters));
+  console.error('[渲染调试] allStats count:', allStats.length, 'ids:', allStats.map(c => c.id));
+
   const formatClusters = allStats.filter(
     (c) => c.category_type === 'format' || c.id.startsWith('smart_format_')
   );
@@ -180,6 +187,7 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
       return (c.count || 0) >= 5;
     }
   });
+  console.error('[渲染调试] rawThemeClusters:', rawThemeClusters.map(c => `${c.id}(count=${c.count})`));
 
   // PRD 4.1 Dual-Layer Sorting: Pinned first -> Unpinned (Newly generated custom clusters come FIRST) -> ClickCount frequency
   const sortedThemeClusters = [...rawThemeClusters].sort((a, b) => {

@@ -105,7 +105,7 @@ export default function SmartFolderCard({
     return () => {
       isMounted = false;
     };
-  }, [cluster.id, cluster.path, cluster.name]);
+  }, [cluster.id, cluster.path ?? '', cluster.name]);
 
   const getClusterIcon = (name, categoryType) => {
     if (categoryType === 'format' || cluster.id.startsWith('smart_format_')) {
