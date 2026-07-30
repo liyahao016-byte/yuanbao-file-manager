@@ -40,7 +40,7 @@ const METADATA = {
   }
 };
 
-export default function SmartFolderDetailView({ type = 'contract', workspacePath }) {
+export default function SmartFolderDetailView({ type = 'contract', workspacePath, onPreview }) {
   const data = METADATA[type];
   const [files, setFiles] = useState([]);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -75,10 +75,14 @@ export default function SmartFolderDetailView({ type = 'contract', workspacePath
 
   const handleDoubleClick = async (id, e, file) => {
     e.stopPropagation();
-    try {
-      if (file.path) await open(file.path);
-    } catch (err) {
-      console.error("Failed to open file natively:", err);
+    if (onPreview) {
+      onPreview(file);
+    } else {
+      try {
+        if (file.path) await open(file.path);
+      } catch (err) {
+        console.error("Failed to open file natively:", err);
+      }
     }
   };
 

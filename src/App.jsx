@@ -820,13 +820,25 @@ function App() {
             ) : currentNav === 'cleanup' ? (
               <CleanupDashboardView workspacePath={workspacePath} />
             ) : currentNav === 'smart_folders' ? (
-              <SmartFolderView smartStats={smartStats} onNavClick={handleNavClick} onPreviewFile={(file) => handlePreviewFile(file)} workspacePath={workspacePath} />
+              <>
+                <SmartFolderView smartStats={smartStats} onNavClick={handleNavClick} onPreviewFile={(file) => handlePreviewFile(file)} workspacePath={workspacePath} />
+                {previewFile && <PreviewerView file={previewFile} onClose={() => handlePreviewFile(null)} />}
+              </>
             ) : currentNav === 'smart_contract' ? (
-              <SmartFolderDetailView key="smart_contract" type="contract" workspacePath={workspacePath} />
+              <>
+                <SmartFolderDetailView key="smart_contract" type="contract" workspacePath={workspacePath} onPreview={(file) => handlePreviewFile(file)} />
+                {previewFile && <PreviewerView file={previewFile} onClose={() => handlePreviewFile(null)} />}
+              </>
             ) : currentNav === 'smart_finance' ? (
-              <SmartFolderDetailView key="smart_finance" type="finance" workspacePath={workspacePath} />
+              <>
+                <SmartFolderDetailView key="smart_finance" type="finance" workspacePath={workspacePath} onPreview={(file) => handlePreviewFile(file)} />
+                {previewFile && <PreviewerView file={previewFile} onClose={() => handlePreviewFile(null)} />}
+              </>
             ) : currentNav === 'smart_resume' ? (
-              <SmartFolderDetailView key="smart_resume" type="resume" workspacePath={workspacePath} />
+              <>
+                <SmartFolderDetailView key="smart_resume" type="resume" workspacePath={workspacePath} onPreview={(file) => handlePreviewFile(file)} />
+                {previewFile && <PreviewerView file={previewFile} onClose={() => handlePreviewFile(null)} />}
+              </>
             ) : viewMode === 'columns' ? (
               <>
                 <FileListView
