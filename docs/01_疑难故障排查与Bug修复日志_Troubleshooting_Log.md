@@ -3,6 +3,32 @@
 此文档用于记录本项目开发过程中遇到的各类疑难杂症、底层 Bug 以及最终的修复方案。
 采用简短、结构化的结论形式，方便后续人类开发者或其他 AI 智能体快速了解项目坑点与经验。
 
+## [2026-07-30] 🐛 重新生成曾被删除的同名 AI 建簇时，卡片在全景视图和导航栏中均不显示
+
+**🔍 现象描述:**
+后端成功生成了"股票"簇（`count: 9`），前端 Toast 也提示成功，但全景视图卡片网格和左侧导航栏 Tab 中均没有出现该簇卡片。
+
+**🧠 核心原因:**
+通过在渲染阶段添加调试日志发现：
+- `customClusters state` 中存在 `cluster_custom_股票`（说明状态更新正常）
+- `rawThemeClusters` 中**不含**该簇（说明被过滤器拦截）
+
+根因定位：用户此前曾点击🗑️解散过"股票"簇，导致 `cluster_custom_股票` 被加入了 `deletedIds` 并持久化到 `localStorage`。  
+后续再次输入"股票"生成同一关键词的簇时，其 id 完全相同（`cluster_custom_股票`），而 `rawThemeClusters` 的过滤条件首先检查 `deletedIds.includes(c.id)`，满足条件后直接 `return false`，导致新簇被拦截无法渲染。
+
+**✅ 解决方案:**
+在 [SmartFolderView.jsx](file:///Users/superli/Desktop/aiwork/文件管理器demo/src/components/SmartFolderView.jsx) 的 `handleCreateAiCluster` 成功回调里，**在调用 `setCustomClusters` 之前先调用 `setDeletedIds`，将新簇 id 从 `deletedIds` 中移除**：
+```js
+setDeletedIds((prev) => {
+  const updated = prev.filter((id) => id !== newCluster.id);
+  localStorage.setItem('smart_deleted_ids', JSON.stringify(updated));
+  return updated;
+});
+```
+确保重新生成的同名簇能顺利通过所有过滤器，实时出现在全景卡片网格和侧边栏中。
+
+---
+
 ## [2026-07-29] 🐛 搜索生成 AI 动态簇后未在侧边栏 Tab 与全景卡片网格中实时渲染展示
 
 **🔍 现象描述:**
