@@ -96,17 +96,11 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
     const trimmed = aiInput.trim();
     if (!trimmed) return;
 
-    const logMsg = `[AI建簇] 触发动态建簇, 输入需求/关键词: "${trimmed}"`;
-    console.error(logMsg);
-    console.log(logMsg);
-    console.warn(logMsg);
-
     setIsGenerating(true);
     setToastMessage(`⏳ 正在全盘检索与分析，为你生成“${trimmed}”专属簇...`);
     try {
       let newCluster = null;
       try {
-        console.error('[AI建簇] 调用 Tauri 后端 create_custom_ai_cluster 指令...');
         newCluster = await invoke('create_custom_ai_cluster', { query: trimmed });
       } catch (tauriErr) {
         console.error('[AI建簇] Tauri 后端调用未响应，使用降级建簇逻辑:', tauriErr);
@@ -126,28 +120,33 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
         };
       }
 
-      console.error('[AI建簇] 成功生成簇对象:', newCluster);
       if (newCluster) {
         if ((newCluster.count || 0) === 0) {
           const msg = `⚠️ 未在工作区找到与“${trimmed}”相关的资产文件，请尝试更换关键词。`;
           setToastMessage(msg);
-          console.error(msg);
           setTimeout(() => setToastMessage(null), 4000);
           return;
         }
+
+        // 关键修复：如果该 id 曾被删除（在 deletedIds 中），重新生成时需先从 deletedIds 移除，
+        // 否则会被 rawThemeClusters 的过滤器拦截导致卡片无法渲染出来
+        setDeletedIds((prev) => {
+          const updated = prev.filter((id) => id !== newCluster.id);
+          localStorage.setItem('smart_deleted_ids', JSON.stringify(updated));
+          return updated;
+        });
+
         setCustomClusters((prev) => {
           const filtered = prev.filter((c) => c.id !== newCluster.id);
           const updated = [newCluster, ...filtered];
           localStorage.setItem('smart_custom_clusters', JSON.stringify(updated));
           // 立即广播，不依赖 useEffect 延迟
           window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
-          console.error('[AI建簇] customClusters 已更新并广播:', updated.map(c => c.id));
           return updated;
         });
         setAiInput('');
         const succMsg = `✨ 成功生成专属簇卡片：「${newCluster.name}」（收录 ${newCluster.count} 个匹配资产）`;
         setToastMessage(succMsg);
-        console.error(succMsg);
         setTimeout(() => setToastMessage(null), 5000);
       }
     } catch (err) {
@@ -167,9 +166,7 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
   customClusters.forEach(c => allStatsMap.set(c.id, c));
   const allStats = Array.from(allStatsMap.values());
 
-  // DEBUG: 每次渲染时打印当前 customClusters 状态
-  console.error('[渲染调试] customClusters state:', JSON.stringify(customClusters));
-  console.error('[渲染调试] allStats count:', allStats.length, 'ids:', allStats.map(c => c.id));
+
 
   const formatClusters = allStats.filter(
     (c) => c.category_type === 'format' || c.id.startsWith('smart_format_')
@@ -187,7 +184,7 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
       return (c.count || 0) >= 5;
     }
   });
-  console.error('[渲染调试] rawThemeClusters:', rawThemeClusters.map(c => `${c.id}(count=${c.count})`));
+
 
   // PRD 4.1 Dual-Layer Sorting: Pinned first -> Unpinned (Newly generated custom clusters come FIRST) -> ClickCount frequency
   const sortedThemeClusters = [...rawThemeClusters].sort((a, b) => {
