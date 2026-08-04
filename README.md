@@ -1,4 +1,4 @@
-# 🚀 元宝文件管理器 (Yuanbao File Manager)
+# 🚀 智能文件管理器 (Smart File Manager)
 
 > **基于 Tauri 2.0 + Rust 底层引擎与 React 18 现代前端打造的下一代 AI 智能桌面文件管理与资产检索系统**。
 
@@ -6,7 +6,6 @@
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
 [![Rust Engine](https://img.shields.io/badge/Rust-Core-orange.svg)](https://www.rust-lang.org/)
 [![Local First](https://img.shields.io/badge/Privacy-100%25%20Local-green.svg)](#-100-端侧隐私与极致性能)
-[![Release](https://img.shields.io/badge/Download-macOS%20.dmg-brightgreen.svg)](https://github.com/liyahao016-byte/yuanbao-file-manager/releases)
 
 ---
 
@@ -14,7 +13,7 @@
 
 ### 1. 🤖 AI 智能全景聚类与自然语言动态建簇
 - **全自动语义分类**：全盘资产自动归集为格式速查（图片、文档、表格、媒体）及 9 大预设场景簇（`求职简历`、`合同协议`、`财务发票`、`方案报告`、`数据报表`、`设计素材`、`学习备考`、`影音媒体`、`代码工程`）。
-- **自然语言 AI 动态建簇**：在顶部搜索框输入任何主题（如“西财期末复习”、“股票分析”），全盘匹配正文与 AI 摘要，≥ 1 匹配即在首屏动态挂载生成专属簇。
+- **自然语言 AI 动态建簇**：在顶部搜索框输入任何主题（如“期末复习”、“股票分析”），全盘匹配正文与 AI 摘要，≥ 1 匹配即在首屏动态挂载生成专属簇。
 
 ### 2. ⚡️ BM25 + 向量混合检索 (Hybrid Search)
 - **语义理解**：基于 BM25 文本精准匹配与 `sqlite-vec` 向量余弦相似度融合算分，搜“求职”自动关联匹配“简历.docx”，搜“报销”自动关联匹配“发票.pdf”。
@@ -35,7 +34,7 @@
 
 ## 🏛️ 详细白皮书与产品报告
 详细的产品架构、算法公式、四大区域布局拆解与路演演说大纲请查阅：
-📄 [元宝文件管理器_产品功能白皮书与路演汇报报告.md](docs/元宝文件管理器_产品功能白皮书与路演汇报报告.md)
+📄 [智能文件管理器_产品功能白皮书与路演汇报报告.md](docs/智能文件管理器_产品功能白皮书与路演汇报报告.md)
 
 ---
 
@@ -67,5 +66,5 @@ npm run tauri build
 ---
 
 ## 📄 开源许可
-MIT License © 2026 元宝文件管理器团队
+MIT License © 2026 智能文件管理器团队
 

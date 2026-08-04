@@ -1,6 +1,7 @@
+
 # 智能文件夹算法与全景卡片技术架构文档 (Smart Folders Architecture)
 
-本文档专门用于全面归档“元宝文件管理器”中**智能文件夹（Smart Folders）**系统的全套技术路径、聚类算法策略、数据流架构及前端全景卡片交互设计。
+本文档专门用于全面归档“智能文件管理器”中**智能文件夹（Smart Folders）**系统的全套技术路径、聚类算法策略、数据流架构及前端全景卡片交互设计。
 
 ---
 
@@ -9,6 +10,7 @@
 智能文件夹旨在打破传统操作系统依靠单一物理目录层级管理文件的局限，基于 **文件格式维度**、**AI 语义主题维度** 以及 **用户打包聚合维度**，为用户构建一个自动化、可多维拓展、支持高度自定义的文件聚合全景视图。
 
 ### 核心解耦目标
+
 1. **解决数据单一占满问题**：针对工作区中含有海量截图/微信文件等干扰项的场景，通过智能停用词清洗与多维分类，防止单一格式剥夺其他主题的展示机会。
 2. **多层级分类结构**：
    - **顶部固定层**：4 大基础格式分类（图片、文档、表格、媒体），固定置顶。
@@ -20,6 +22,7 @@
 ## 🧠 2. 后端算法与数据处理流水线 (Backend Pipeline)
 
 ### 2.1 格式大类精准聚类 (Format Micro-Clustering)
+
 后端在执行 `get_smart_folder_stats` 时，首先读取数据库全量文件扩展名（Extension），归类为四大固定格式簇：
 
 ```rust
@@ -31,6 +34,7 @@ match ext.as_str() {
     _ => {}
 }
 ```
+
 - **ID 规约**：`smart_format_image`, `smart_format_document`, `smart_format_excel`, `smart_format_media`
 - **标识类型**：`category_type: Some("format")`
 
@@ -110,6 +114,7 @@ match ext.as_str() {
 ## 📁 4. 核心接口与数据结构规约
 
 ### 4.1 数据结构 (`SmartCluster`)
+
 ```rust
 #[derive(Serialize)]
 struct SmartCluster {
@@ -123,14 +128,14 @@ struct SmartCluster {
 
 ### 4.2 Tauri Command 接口列表
 
-| 接口名称 | 输入参数 | 返回类型 | 功能说明 |
-|---|---|---|---|
-| `get_smart_folder_stats` | 无 | `Result<Vec<SmartCluster>, String>` | 获取全量分类簇统计（含 4 大格式簇与主题簇） |
-| `get_files_by_cluster` | `{ theme: String }` | `Result<Vec<FileItem>, String>` | 根据格式簇 ID 或主题名称查询关联文件列表 |
-| `generate_smart_group_name` | `{ paths: Vec<String> }` | `Result<Vec<String>, String>` | 传入文件列表，调用 AI 归纳生成 3 个主题名称 |
-| `create_aggregate_folder` | `{ paths, folderName, targetDir }` | `Result<String, String>` | 创建聚合文件夹并将暂存文件安全打包入内 |
+| 接口名称                      | 输入参数                             | 返回类型                              | 功能说明                                    |
+| ----------------------------- | ------------------------------------ | ------------------------------------- | ------------------------------------------- |
+| `get_smart_folder_stats`    | 无                                   | `Result<Vec<SmartCluster>, String>` | 获取全量分类簇统计（含 4 大格式簇与主题簇） |
+| `get_files_by_cluster`      | `{ theme: String }`                | `Result<Vec<FileItem>, String>`     | 根据格式簇 ID 或主题名称查询关联文件列表    |
+| `generate_smart_group_name` | `{ paths: Vec<String> }`           | `Result<Vec<String>, String>`       | 传入文件列表，调用 AI 归纳生成 3 个主题名称 |
+| `create_aggregate_folder`   | `{ paths, folderName, targetDir }` | `Result<String, String>`            | 创建聚合文件夹并将暂存文件安全打包入内      |
 
 ---
 
-*最新更新日期：2026-07-26*  
+*最新更新日期：2026-07-26*
 *归档状态：已完成全量代码落盘与编译验证*

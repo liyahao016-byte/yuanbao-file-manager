@@ -107,8 +107,8 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
         const query_clean = trimmed.toLowerCase();
         const display_name = (query_clean.includes('西财') || query_clean.includes('期末') || query_clean.includes('试卷') || query_clean.includes('复习'))
           ? '期末复习资料'
-          : (query_clean.includes('元宝') || query_clean.includes('项目') || query_clean.includes('代码'))
-          ? '元宝文件管理器项目'
+          : (query_clean.includes('智享') || query_clean.includes('项目') || query_clean.includes('代码'))
+          ? '智能文件管理器项目'
           : `${trimmed} 相关簇`;
 
         newCluster = {

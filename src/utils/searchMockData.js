@@ -30,31 +30,31 @@ export const getSearchMockResults = (query) => {
     ];
   }
 
-  if (q.includes('昨天') || q.includes('元宝')) {
+  if (q.includes('昨天') || q.includes('智享') || q.includes('智能')) {
     return [
       {
         id: 1, type: 'pdf', icon: 'P', iconColor: '#ff4d4f', 
-        name: '元宝功能重构商业化章程.pdf', size: '3.8 MB', time: '2026/06/23 15:30', date: '06/23',
+        name: '智享功能重构商业化章程.pdf', size: '3.8 MB', time: '2026/06/23 15:30', date: '06/23',
         source: '手机浏览器下载',
-        hitReason: '正文包含“元宝项目”相关内容'
+        hitReason: '正文包含“智享项目”相关内容'
       },
       {
         id: 2, type: 'txt', icon: 'T', iconColor: '#8c8c8c', 
-        name: '元宝推进重点备注.txt', size: '15 KB', time: '2026/06/23 16:45', date: '06/23',
+        name: '智享推进重点备注.txt', size: '15 KB', time: '2026/06/23 16:45', date: '06/23',
         source: '手机微信',
-        hitReason: '文件包含“元宝项目”相关内容'
+        hitReason: '文件包含“智享项目”相关内容'
       },
       {
         id: 3, type: 'word', icon: 'W', iconColor: '#1890ff', 
-        name: '元宝项目补充协议说明（1）.docx', size: '2.5 MB', time: '2026/06/23 14:10', date: '06/23',
+        name: '智享项目补充协议说明（1）.docx', size: '2.5 MB', time: '2026/06/23 14:10', date: '06/23',
         source: '手机浏览器下载',
-        hitReason: '文件包含“元宝项目”相关内容'
+        hitReason: '文件包含“智享项目”相关内容'
       },
       {
         id: 4, type: 'pdf', icon: 'P', iconColor: '#ff4d4f', 
-        name: '元宝-技术说明备忘录.pdf', size: '4.2 MB', time: '2026/06/23 17:20', date: '06/23',
+        name: '智享-技术说明备忘录.pdf', size: '4.2 MB', time: '2026/06/23 17:20', date: '06/23',
         source: '手机微信',
-        hitReason: '正文包含“元宝项目”相关内容'
+        hitReason: '正文包含“智享项目”相关内容'
       }
     ];
   }
@@ -64,7 +64,7 @@ export const getSearchMockResults = (query) => {
     {
       id: 1, type: 'pdf', icon: 'P', iconColor: '#ff4d4f', 
       name: '2026新能源行业趋势前瞻及供应链白皮书.pdf', size: '3.2 MB', time: '2026/06/20 14:24', date: '06/20',
-      source: 'QQ浏览器下载',
+      source: '手机浏览器下载',
       hitReason: '关于新能源汽车在上游企...'
     },
     {
@@ -82,7 +82,7 @@ export const getSearchMockResults = (query) => {
     {
       id: 4, type: 'txt', icon: 'T', iconColor: '#8c8c8c', 
       name: '未命名文档(3).txt', size: '12 KB', time: '2026/05/14 11:20', date: '05/14',
-      source: 'QQ接收',
+      source: '应用接收',
       hitReason: '文件包含“新能源汽车行业面临的研发瓶颈...”相关内容'
     }
   ];

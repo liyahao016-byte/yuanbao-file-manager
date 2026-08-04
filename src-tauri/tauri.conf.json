@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "元宝文件管理器",
+  "productName": "智能文件管理器",
   "version": "0.1.0",
-  "identifier": "com.yuanbao.filemanager",
+  "identifier": "com.smart.filemanager",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "元宝文件管理器",
+        "title": "智能文件管理器",
         "label": "main",
         "width": 1150,
         "height": 750,

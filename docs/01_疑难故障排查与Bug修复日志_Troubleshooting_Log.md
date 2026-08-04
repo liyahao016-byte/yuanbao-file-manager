@@ -201,7 +201,7 @@ Vite 开发服务器（`npm run dev`）服务进程退出，导致本地 5173 �
 
 **✅ 解决方案:**
 - 用 mousemove 事件的 e.clientX/Y 实时记录鼠标位置（CSS 逻辑像素，无需换算）
-- 将收纳区改为 QQ 风格固定坐标浮层（底部中央 380x220px），坐标系与 clientX/Y 完全一致
+- 将收纳区改为 极速风格固定坐标浮层（底部中央 380x220px），坐标系与 clientX/Y 完全一致
 - tauri://drag-drop 触发时，同时检查 lastMouseX/Y 在浮层范围内 + window.__draggedFile 存在，两者均满足才执行收纳
 
 ---

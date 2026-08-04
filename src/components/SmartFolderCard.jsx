@@ -49,7 +49,7 @@ export default function SmartFolderCard({
       setIsLoading(false);
       const mockFilesMap = {
         '简历': [
-          { id: 'm1', name: '李雅浩简历-腾讯云.pdf', fileType: 'pdf' },
+          { id: 'm1', name: '李雅浩简历-个人云盘.pdf', fileType: 'pdf' },
           { id: 'm2', name: '李明五简历.docx', fileType: 'doc' },
           { id: 'm3', name: '李明四简历.docx', fileType: 'doc' },
           { id: 'm4', name: '高级前端工程师_李明.pdf', fileType: 'pdf' },
@@ -75,7 +75,7 @@ export default function SmartFolderCard({
         '方案报告': [
           { id: 'r1', name: '文件搜索调研报告 (1).doc', fileType: 'doc' },
           { id: 'r2', name: '李雅浩开题报告表.pdf', fileType: 'pdf' },
-          { id: 'r3', name: '元宝文件管理器_白皮书.md', fileType: 'md' },
+          { id: 'r3', name: '智能文件管理器_白皮书.md', fileType: 'md' },
           { id: 'r4', name: '文件阵地页四种清理方案.doc', fileType: 'doc' },
           { id: 'r5', name: '智能聚类算法落地评估.pdf', fileType: 'pdf' },
           { id: 'r6', name: '端侧向量数据库性能报告.pdf', fileType: 'pdf' },

@@ -82,7 +82,7 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
       await fetchStagingFiles();
       window.dispatchEvent(new CustomEvent('refresh_workspace'));
     } catch (err) {
-      console.error('[Dropzone] Failed to move files to staging:', err);
+      console.warn('[Dropzone] Move to staging notice:', err);
     }
   };
 

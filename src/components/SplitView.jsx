@@ -21,7 +21,7 @@ const scenarioMap = {
   desktop: '桌面',
   download: '下载',
   wechat: '微信文件',
-  qq: 'QQ文件',
+  qq: '办公文件',
   pc: '此电脑'
 };
 
@@ -30,7 +30,7 @@ const navNames = {
   desktop: '桌面',
   download: '下载',
   wechat: '微信文件',
-  qq: 'QQ文件',
+  qq: '办公文件',
   pc: '此电脑',
   smart_folders: '智能分类'
 };

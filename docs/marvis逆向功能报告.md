@@ -279,7 +279,7 @@
 <div class="cover">
   <div class="badge">逆向工程报告</div>
   <h1>Marvis 逆向工程报告</h1>
-  <p class="subtitle">腾讯 AI 桌面助手 — 深度逆向分析</p>
+  <p class="subtitle">AI 桌面助手 — 深度逆向分析</p>
   <p class="meta">
     <span>版本: 1.0.0.10300</span>
     <span>构建: 2026-07-21</span>
@@ -434,7 +434,7 @@
   <tr><th>文件</th><th>说明</th></tr>
   <tr><td><code>MarvisHost</code></td><td>主二进制 (Rust 编译, arm64)</td></tr>
   <tr><td><code>libwss_plugin.dylib</code></td><td>WebSocket 安全连接插件</td></tr>
-  <tr><td><code>libcos_uploader.dylib</code></td><td>腾讯云 COS 文件上传</td></tr>
+  <tr><td><code>libcos_uploader.dylib</code></td><td>个人云盘 COS 文件上传</td></tr>
   <tr><td><code>liblocation_provider.dylib</code></td><td>位置服务</td></tr>
 </table>
 
@@ -530,7 +530,7 @@
   <tr><td>mac-desktop-ops</td><td>8KB</td><td>Mac 应用操作</td></tr>
   <tr><td>legacy-doc-parser</td><td>6KB</td><td>旧版文档解析器</td></tr>
   <tr><td>image-processing</td><td>5KB</td><td>图片处理</td></tr>
-  <tr><td>web-qqmail-invoice</td><td>5KB</td><td>QQ 邮箱发票下载</td></tr>
+  <tr><td>web-qqmail-invoice</td><td>5KB</td><td>常用邮箱发票下载</td></tr>
   <tr><td>yyb-engine-install</td><td>2KB</td><td>应用宝引擎安装</td></tr>
   <tr><td>pdf</td><td>12KB</td><td>PDF 处理指南</td></tr>
 </table>

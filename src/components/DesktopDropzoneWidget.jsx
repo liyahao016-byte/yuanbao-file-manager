@@ -199,7 +199,7 @@ export default function DesktopDropzoneWidget() {
     );
   }
 
-  // Full QQ 闪传 Style Desktop Dropzone Window View
+  // Full 极速闪传 Style Desktop Dropzone Window View
   return (
     <div
       ref={widgetRef}
@@ -249,7 +249,7 @@ export default function DesktopDropzoneWidget() {
           position: 'relative',
         }}
       >
-        {/* Header / Drag Handle (QQ 闪传 风格) */}
+        {/* Header / Drag Handle (极速闪传 风格) */}
         <div
           data-tauri-drag-region
           style={{

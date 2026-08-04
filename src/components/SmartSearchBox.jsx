@@ -6,7 +6,7 @@ const getChannel = (path) => {
   if (!path) return '本地文件';
   const lower = path.toLowerCase();
   if (lower.includes('wechat') || lower.includes('微信')) return '微信接收';
-  if (lower.includes('qq')) return 'QQ接收';
+  if (lower.includes('qq')) return '应用接收';
   if (lower.includes('download') || lower.includes('下载')) return '浏览器下载';
   if (lower.includes('desktop') || lower.includes('桌面')) return '本地桌面';
   return '本地文件';

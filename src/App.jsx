@@ -274,7 +274,7 @@ function App() {
     desktop: { name: '桌面', icon: Icons.desktop },
     download: { name: '下载', icon: Icons.download },
     wechat: { name: '微信文件', icon: Icons.wechat },
-    qq: { name: 'QQ文件', icon: Icons.qq },
+    qq: { name: '办公文件', icon: Icons.qq },
     pc: { name: '此电脑', icon: Icons.pc },
     smart_folders: { name: '智能文件夹', icon: Icons.folder },
     cleanup: { name: '深度空间清理', icon: Icons.clean },
@@ -313,7 +313,7 @@ function App() {
       {/* 左侧边栏 */}
       <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div style={{ padding: '0 20px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '32px' }}>
-          {!isSidebarCollapsed && <h1 style={{ fontSize: '20px', fontWeight: '600', letterSpacing: '0.5px', margin: 0 }}>元宝文件</h1>}
+          {!isSidebarCollapsed && <h1 style={{ fontSize: '20px', fontWeight: '600', letterSpacing: '0.5px', margin: 0 }}>智能文件</h1>}
           <div
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--icon-color)', marginLeft: isSidebarCollapsed ? '-4px' : '0' }}
@@ -325,7 +325,7 @@ function App() {
           </div>
         </div>
 
-        {/* 元宝文件下方的全局工具按钮组 */}
+        {/* 智能文件下方的全局工具按钮组 */}
         {!isSidebarCollapsed && (
           <div style={{ padding: '0 20px', marginBottom: '10px', display: 'flex', gap: '8px' }}>
             <button
@@ -393,7 +393,7 @@ function App() {
                 className={`nav-item ${currentNav === 'qq' && !searchQuery ? 'active' : ''}`}
                 onClick={() => handleNavClick('qq')}
                 style={{ display: 'flex', alignItems: 'center', padding: '6px 10px', borderRadius: '6px', background: (currentNav === 'qq' && !searchQuery) ? 'var(--bg-active)' : 'transparent', color: (currentNav === 'qq' && !searchQuery) ? 'var(--tag-green)' : 'var(--text-primary)', fontWeight: (currentNav === 'qq' && !searchQuery) ? '600' : '400', cursor: 'pointer', fontSize: '13px' }}>
-                <span style={{ color: (currentNav === 'qq' && !searchQuery) ? 'inherit' : 'var(--icon-color)', marginRight: '8px', display: 'flex' }}>{Icons.qq}</span> {!isSidebarCollapsed && <span>QQ文件</span>}
+                <span style={{ color: (currentNav === 'qq' && !searchQuery) ? 'inherit' : 'var(--icon-color)', marginRight: '8px', display: 'flex' }}>{Icons.qq}</span> {!isSidebarCollapsed && <span>办公文件</span>}
               </li>
               <li
                 className={`nav-item ${currentNav === 'pc' && !searchQuery ? 'active' : ''}`}

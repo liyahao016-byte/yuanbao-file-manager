@@ -555,7 +555,7 @@ export default function FileListView({
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
         {files.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#999', fontSize: '14px', marginTop: '100px' }}>
-            {category === 'recent' ? '暂时没有最近操作过的文件' : category === 'wechat' ? '暂时没有微信文件' : category === 'qq' ? '暂时没有QQ文件' : '暂无文件'}
+            {category === 'recent' ? '暂时没有最近操作过的文件' : category === 'wechat' ? '暂时没有微信文件' : category === 'qq' ? '暂时没有办公文件' : '暂无文件'}
           </div>
         ) : (
           <div style={{ padding: '4px 8px' }}>
@@ -755,7 +755,7 @@ export default function FileListView({
               case 'desktop': return ['我的 Mac', '用户', 'superli', '桌面'];
               case 'download': return ['我的 Mac', '用户', 'superli', '下载'];
               case 'wechat': return ['我的 Mac', '应用程序数据', '微信', '文件'];
-              case 'qq': return ['我的 Mac', '应用程序数据', 'QQ', '文件'];
+              case 'qq': return ['我的 Mac', '应用程序数据', '常用沟通工具', '文件'];
               case 'recent': return ['我的 Mac', '最近使用'];
               default:
                 if (category.startsWith('tag_')) {

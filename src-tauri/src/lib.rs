@@ -685,7 +685,7 @@ async fn get_files_by_cluster(
                 let clean_theme = theme
                     .replace("cluster_custom_", "")
                     .replace("cluster_", "");
-                ("(lower(name) LIKE ?1 OR lower(path) LIKE ?1)".to_string(), Some(format!("%{}%", clean_theme)))
+                ("(lower(name) LIKE ?1 OR lower(path) LIKE ?1 OR lower(ai_suggestion) LIKE ?1 OR lower(tags) LIKE ?1)".to_string(), Some(format!("%{}%", clean_theme)))
             }
         };
 
@@ -2002,8 +2002,8 @@ async fn create_custom_ai_cluster(
     let cluster_id = format!("cluster_custom_{}", query_clean);
     let display_name = if query_clean.contains("西财") || query_clean.contains("期末") || query_clean.contains("试卷") || query_clean.contains("复习") {
         String::from("期末复习资料")
-    } else if query_clean.contains("元宝") || query_clean.contains("项目") || query_clean.contains("代码") {
-        String::from("元宝文件管理器项目")
+    } else if query_clean.contains("智享") || query_clean.contains("智能") || query_clean.contains("代码") {
+        String::from("智能文件管理器项目")
     } else {
         format!("{} 相关资料", query.trim())
     };

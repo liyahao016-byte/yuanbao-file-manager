@@ -105,7 +105,7 @@ export default function CleanupDashboardView({ workspacePath }) {
              <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
            </div>
            <h2 style={{ fontSize: '18px', color: 'var(--text-primary)', margin: '0 0 8px 0' }}>正在深度扫描全盘数据...</h2>
-           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>正在分析微信/QQ缓存与临时文件目录</p>
+           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>正在分析微信/常用沟通工具缓存与临时文件目录</p>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: '24px' }}>
@@ -162,7 +162,7 @@ export default function CleanupDashboardView({ workspacePath }) {
              <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center' }}>
                <div style={{ width: '48px', height: '48px', background: '#e6f7ff', color: '#1890ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginRight: '16px' }}>💬</div>
                <div style={{ flex: 1 }}>
-                 <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>微信/QQ 备份缓存</div>
+                 <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>微信/常用沟通工具 备份缓存</div>
                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>包含历史群聊的深层视频与冗余文件。AI 已识别无需保留。</div>
                </div>
                <div style={{ textAlign: 'right' }}>
