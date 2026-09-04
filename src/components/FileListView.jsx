@@ -26,7 +26,7 @@ export default function FileListView({
   smartStats = []
 }) {
   const [files, setFiles] = useState([]);
-  const [nativeIcons, setNativeIcons] = useState({});
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFileIds, setSelectedFileIds] = useState({});
 
@@ -98,18 +98,7 @@ export default function FileListView({
     return () => window.removeEventListener('refresh_workspace', handleRefresh);
   }, [category, workspacePath]);
 
-  useEffect(() => {
-    if (window.__TAURI_INTERNALS__) {
-      const allFiles = [...files];
-      Object.values(expandedFolders).forEach(children => allFiles.push(...children));
-      const pathsToFetch = allFiles.map(f => f.path).filter(path => path && !nativeIcons[path]);
-      if (pathsToFetch.length > 0) {
-        invoke('get_file_icons_batch', { paths: pathsToFetch })
-          .then(res => setNativeIcons(prev => ({ ...prev, ...res })))
-          .catch(console.error);
-      }
-    }
-  }, [files, expandedFolders]);
+
 
 
   const handleSyncEmbeddings = async () => {
@@ -226,7 +215,7 @@ export default function FileListView({
     return new Date(timeStr.replace(' ', 'T')).getTime();
   };
 
-  const rawRenderFiles = getRenderList(files);
+  const rawRenderFiles = getRenderList(files).filter(f => f && f.name);
   const availableFormats = Array.from(new Set(
     rawRenderFiles.map(f => (f.format || f.type || '').toUpperCase()).filter(f => f && f !== 'FOLDER')
   )).sort();
@@ -386,6 +375,11 @@ export default function FileListView({
       try {
         for (const p of previews) {
           await invoke('apply_virtual_rename', { id: p.id, newVirtualName: p.newName, new_virtual_name: p.newName, path: p.path });
+          try {
+            await invoke('sync_virtual_name_to_disk', { id: p.id });
+          } catch(e) {
+            console.error("Physical rename failed for", p.id, e);
+          }
         }
         // Refetch top level
         let dirPath = workspacePath;
@@ -467,26 +461,6 @@ export default function FileListView({
               定位
             </button>
 
-            {/* 导出 */}
-            <button
-              onClick={handleBatchExportToDesktop}
-              disabled={selectedFiles.length === 0}
-              title={selectedFiles.length === 0 ? '请勾选需要导出的文件' : `将勾选的 ${selectedFiles.length} 个文件批量导出至桌面`}
-              style={{
-                padding: '2px 8px',
-                borderRadius: '4px',
-                border: selectedFiles.length > 0 ? '1px solid rgba(0, 185, 107, 0.3)' : '1px solid #e2e8f0',
-                background: selectedFiles.length > 0 ? 'rgba(0, 185, 107, 0.08)' : '#f8fafc',
-                fontSize: '11px',
-                cursor: selectedFiles.length > 0 ? 'pointer' : 'not-allowed',
-                color: selectedFiles.length > 0 ? 'var(--tag-green)' : '#cbd5e1',
-                fontWeight: '600',
-                opacity: selectedFiles.length > 0 ? 1 : 0.6,
-              }}
-            >
-              导出 {selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}
-            </button>
-
             {/* 勾选时展现 AI 命名与标签胶囊 */}
             {selectedFiles.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
@@ -515,7 +489,7 @@ export default function FileListView({
 
         {/* 右侧：大小、格式、操作时间 */}
         <span 
-          style={{ width: '80px', textAlign: 'right', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', userSelect: 'none', flexShrink: 0 }} 
+          style={{ width: '100px', textAlign: 'right', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', userSelect: 'none', flexShrink: 0 }} 
           onClick={() => setSortConfig(prev => ({ key: 'size', direction: prev.key === 'size' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
         >
           大小
@@ -524,7 +498,7 @@ export default function FileListView({
             <span style={{ color: sortConfig.key === 'size' && sortConfig.direction === 'desc' ? 'var(--tag-green)' : '#ccc' }}>▼</span>
           </span>
         </span>
-        <span style={{ width: '60px', marginLeft: '16px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <span style={{ width: '72px', marginLeft: '24px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <select 
               value={formatFilter}
@@ -541,7 +515,7 @@ export default function FileListView({
           </div>
         </span>
         <span 
-          style={{ width: '120px', marginLeft: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', userSelect: 'none', flexShrink: 0 }}
+          style={{ width: '140px', marginLeft: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', userSelect: 'none', flexShrink: 0 }}
           onClick={() => setSortConfig(prev => ({ key: 'time', direction: prev.key === 'time' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
         >
           操作时间
@@ -623,7 +597,6 @@ export default function FileListView({
             }}
             onMouseEnter={() => setHoveredFileId(file.id)}
             onMouseLeave={() => setHoveredFileId(null)}
-            onClick={(e) => toggleActive(file.id, e, file)}
             onDoubleClick={(e) => handleDoubleClick(file.id, e, file)}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
@@ -640,16 +613,15 @@ export default function FileListView({
                     ▶
                   </span>
                 )}
-                <div style={{ width: '16px', height: '16px', border: selectedFileIds[file.id] ? 'none' : '1px solid #cbd5e1', background: selectedFileIds[file.id] ? 'var(--tag-green)' : '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '8px', cursor: 'pointer' }}>
+                <div 
+                  onClick={(e) => toggleActive(file.id, e, file)}
+                  style={{ width: '16px', height: '16px', border: selectedFileIds[file.id] ? 'none' : '1px solid #cbd5e1', background: selectedFileIds[file.id] ? 'var(--tag-green)' : '#fff', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '8px', cursor: 'pointer' }}
+                >
                   {selectedFileIds[file.id] && <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>}
                 </div>
-                {nativeIcons[file.path] ? (
-                  <img src={`data:image/png;base64,${nativeIcons[file.path]}`} style={{ width: '20px', height: '20px', marginRight: '8px', flexShrink: 0 }} />
-                ) : (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', marginRight: '8px', flexShrink: 0 }}>
                     {getFileIcon(file.type || file.fileType)}
                   </span>
-                )}
               </span>
 
               <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
@@ -691,9 +663,9 @@ export default function FileListView({
                 </div>
               ) : (
                 <>
-                  <span style={{ width: '80px', textAlign: 'right', fontSize: '13px', color: 'var(--text-secondary)', flexShrink: 0 }}>{file.size || '--'}</span>
-                  <span style={{ width: '60px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', background: '#f5f5f5', borderRadius: '4px', padding: '2px 0', marginLeft: '16px', flexShrink: 0 }}>{file.format || file.type.toUpperCase()}</span>
-                  <span style={{ width: '120px', fontSize: '13px', color: 'var(--text-secondary)', marginLeft: '16px', flexShrink: 0 }}>{file.updatedAt || file.time || '--'}</span>
+                  <span style={{ width: '100px', textAlign: 'right', fontSize: '13px', color: 'var(--text-secondary)', flexShrink: 0 }}>{file.size || '--'}</span>
+                  <span style={{ width: '72px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', background: '#f1f5f9', borderRadius: '4px', padding: '2px 0', marginLeft: '24px', flexShrink: 0, letterSpacing: '0.3px', fontWeight: '500' }}>{file.format || (file.type ? file.type.toUpperCase() : '--')}</span>
+                  <span style={{ width: '140px', fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '24px', flexShrink: 0, letterSpacing: '0.2px' }}>{file.updatedAt || file.updated_at || file.time || '--'}</span>
                 </>
               )}
             </div>
@@ -702,50 +674,7 @@ export default function FileListView({
         )}
       </div>
 
-      {/* 10 Items Pagination Control Bar */}
-      {category.startsWith('cluster_') && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '10px 16px', borderTop: '1px solid var(--border-color)', background: '#ffffff', userSelect: 'none', flexShrink: 0 }}>
-          <button
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            style={{
-              padding: '6px 16px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: currentPage <= 1 ? '#f1f5f9' : '#ffffff',
-              color: currentPage <= 1 ? '#94a3b8' : 'var(--text-primary)',
-              cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
-              fontWeight: '600',
-              fontSize: '12px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            ◀ 上一页
-          </button>
-          <span style={{ fontSize: '13px', fontWeight: '700', color: '#334155' }}>
-            第 {currentPage} 页 <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>(每页仅精准抓取 10 项)</span>
-          </span>
-          <button
-            disabled={files.length < 10}
-            onClick={() => setCurrentPage((prev) => prev + 1)}
-            style={{
-              padding: '6px 16px',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: files.length < 10 ? '#f1f5f9' : '#ffffff',
-              color: files.length < 10 ? '#94a3b8' : 'var(--text-primary)',
-              cursor: files.length < 10 ? 'not-allowed' : 'pointer',
-              fontWeight: '600',
-              fontSize: '12px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            下一页 ▶
-          </button>
-        </div>
-      )}
+
 
       {/* 底部面包屑导航 */}
       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border-color)', background: '#fafafa', display: 'flex', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>

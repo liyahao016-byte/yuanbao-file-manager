@@ -29,6 +29,13 @@ export default function WelcomeScreen({ onWorkspaceSelected }) {
   };
 
   const handleGrantAll = async () => {
+    if (!window.__TAURI_INTERNALS__) {
+      setIsScanning(true);
+      setTimeout(() => {
+        onWorkspaceSelected('mock_home');
+      }, 1000);
+      return;
+    }
     try {
       const home = await invoke('get_home_dir') || '~/';
       startStreamingScan(home);
@@ -38,6 +45,13 @@ export default function WelcomeScreen({ onWorkspaceSelected }) {
   };
 
   const handleSelectFolder = async () => {
+    if (!window.__TAURI_INTERNALS__) {
+      setIsScanning(true);
+      setTimeout(() => {
+        onWorkspaceSelected('mock_folder');
+      }, 1000);
+      return;
+    }
     try {
       const selectedPath = await open({
         directory: true,

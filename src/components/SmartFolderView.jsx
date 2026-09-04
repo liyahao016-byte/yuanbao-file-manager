@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import SmartFolderCard from './SmartFolderCard';
 
-export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile, workspacePath }) {
+export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile, onArchive, workspacePath }) {
   const [pinnedIds, setPinnedIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('smart_pinned_ids')) || [];
@@ -43,6 +43,14 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
     }
   });
 
+  const [customNames, setCustomNames] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('smart_cluster_custom_names')) || {};
+    } catch (_) {
+      return {};
+    }
+  });
+
   const [draggedIdx, setDraggedIdx] = useState(null);
   const [aiInput, setAiInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -50,23 +58,36 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
   // Save state updates to localStorage and notify sidebar for real-time sync
   useEffect(() => {
     localStorage.setItem('smart_pinned_ids', JSON.stringify(pinnedIds));
-    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('smart_cluster_state_change')), 0);
   }, [pinnedIds]);
 
   useEffect(() => {
     localStorage.setItem('smart_deleted_ids', JSON.stringify(deletedIds));
-    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('smart_cluster_state_change')), 0);
   }, [deletedIds]);
 
   useEffect(() => {
     localStorage.setItem('smart_custom_clusters', JSON.stringify(customClusters));
-    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('smart_cluster_state_change')), 0);
   }, [customClusters]);
 
   useEffect(() => {
     localStorage.setItem('smart_cluster_order', JSON.stringify(clusterOrder));
-    window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('smart_cluster_state_change')), 0);
   }, [clusterOrder]);
+
+  useEffect(() => {
+    localStorage.setItem('smart_cluster_custom_names', JSON.stringify(customNames));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('smart_cluster_state_change')), 0);
+  }, [customNames]);
+
+  const handleRenameCluster = (id, newName) => {
+    if (!newName || !newName.trim()) return;
+    setCustomNames((prev) => ({
+      ...prev,
+      [id]: newName.trim(),
+    }));
+  };
 
   const handleTogglePin = (id) => {
     setPinnedIds((prev) =>
@@ -140,9 +161,19 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
           const filtered = prev.filter((c) => c.id !== newCluster.id);
           const updated = [newCluster, ...filtered];
           localStorage.setItem('smart_custom_clusters', JSON.stringify(updated));
-          // 立即广播，不依赖 useEffect 延迟
-          window.dispatchEvent(new CustomEvent('smart_cluster_state_change'));
+          // 立即广播，不依赖 useEffect 延迟，用 setTimeout 确保脱离渲染阶段
+          setTimeout(() => window.dispatchEvent(new CustomEvent('smart_cluster_state_change')), 0);
           return updated;
+        });
+        
+        // 自动钉住该生成的智能文件夹
+        setPinnedIds((prev) => {
+          if (!prev.includes(newCluster.id)) {
+            const updated = [...prev, newCluster.id];
+            localStorage.setItem('smart_pinned_ids', JSON.stringify(updated));
+            return updated;
+          }
+          return prev;
         });
         setAiInput('');
         const succMsg = `✨ 成功生成专属簇卡片：「${newCluster.name}」（收录 ${newCluster.count} 个匹配资产）`;
@@ -162,8 +193,8 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
   // Divide clusters into Top 4 Format Cards and Theme Cards
   const rawBaseStats = Array.isArray(smartStats) ? smartStats : [];
   const allStatsMap = new Map();
-  rawBaseStats.forEach(c => allStatsMap.set(c.id, c));
-  customClusters.forEach(c => allStatsMap.set(c.id, c));
+  rawBaseStats.forEach(c => allStatsMap.set(c.id, { ...c, name: customNames[c.id] || c.name }));
+  customClusters.forEach(c => allStatsMap.set(c.id, { ...c, name: customNames[c.id] || c.name }));
   const allStats = Array.from(allStatsMap.values());
 
 
@@ -478,8 +509,10 @@ export default function SmartFolderView({ smartStats, onNavClick, onPreviewFile,
                 isPinned={pinnedIds.includes(cluster.id)}
                 onPin={handleTogglePin}
                 onDelete={handleDelete}
+                onRename={handleRenameCluster}
                 onFullView={(id) => onNavClick && onNavClick(id)}
                 onPreviewFile={onPreviewFile}
+                onArchive={onArchive}
                 isDraggable={true}
                 onDragStart={(e) => handleDragStart(e, index)}
                 onDragOver={handleDragOver}

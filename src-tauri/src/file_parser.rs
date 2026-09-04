@@ -60,17 +60,49 @@ pub fn read_text_snippet(path: &str, max_chars: usize) -> Result<String, String>
             }
         },
         "docx" => read_docx(p)?,
+        "html" | "htm" => read_html(p)?,
         _ => read_plain_text(p)?,
     };
 
-    let snippet: String = text.chars().take(max_chars).collect();
+    let char_count = text.chars().count();
+    let snippet = if char_count <= max_chars {
+        text
+    } else {
+        let head_len = max_chars / 2;
+        let tail_len = max_chars - head_len;
+        
+        let head: String = text.chars().take(head_len).collect();
+        let tail: String = text.chars().skip(char_count - tail_len).collect();
+        
+        format!("{}\n\n...[中间超长内容已折叠]...\n\n{}", head, tail)
+    };
+    
     Ok(snippet.trim().to_string())
 }
 
 fn read_pdf(path: &Path) -> Result<String, String> {
-    match pdf_extract::extract_text(path) {
-        Ok(t) => Ok(t),
-        Err(e) => Err(format!("Failed to parse PDF: {:?}", e)),
+    let path_buf = path.to_path_buf();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        pdf_extract::extract_text(&path_buf)
+    }));
+
+    let path_str = path.to_str().unwrap_or_default();
+    match result {
+        Ok(Ok(t)) => Ok(t),
+        Ok(Err(e)) => {
+            if let Some(ocr_text) = perform_mac_ocr(path_str) {
+                Ok(ocr_text)
+            } else {
+                Err(format!("Failed to parse PDF: {:?}", e))
+            }
+        }
+        Err(_) => {
+            if let Some(ocr_text) = perform_mac_ocr(path_str) {
+                Ok(ocr_text)
+            } else {
+                Err("PDF parsing panicked on unsupported encoding".to_string())
+            }
+        }
     }
 }
 
@@ -98,6 +130,24 @@ fn read_docx(path: &Path) -> Result<String, String> {
     }
 
     Ok(extracted)
+}
+
+fn read_html(path: &Path) -> Result<String, String> {
+    let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read HTML file: {}", e))?;
+    let mut extracted = String::with_capacity(content.len());
+    let mut in_tag = false;
+    for c in content.chars() {
+        if c == '<' {
+            in_tag = true;
+        } else if c == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            extracted.push(c);
+        }
+    }
+    // Collapse multiple whitespaces
+    let clean: Vec<_> = extracted.split_whitespace().collect();
+    Ok(clean.join(" "))
 }
 
 fn read_plain_text(path: &Path) -> Result<String, String> {

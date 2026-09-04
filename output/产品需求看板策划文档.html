@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产品需求看板 — 策划文档 V1.0</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-light: #eff6ff;
+    --secondary: #10b981;
+    --secondary-light: #ecfdf5;
+    --warning: #f59e0b;
+    --warning-light: #fffbeb;
+    --danger: #ef4444;
+    --danger-light: #fef2f2;
+    --purple: #7c3aed;
+    --purple-light: #f5f3ff;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--gray-50); color: var(--gray-800); line-height: 1.7;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 32px 80px; }
+  
+  /* 封面 */
+  .cover {
+    background: linear-gradient(135deg, #1e40af 0%, #7c3aed 50%, #db2777 100%);
+    border-radius: 16px; padding: 48px 40px; margin-bottom: 40px; color: #fff; position: relative; overflow: hidden;
+  }
+  .cover::before {
+    content: ''; position: absolute; top: -50%; right: -30%; width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%); border-radius: 50%;
+  }
+  .cover h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; position: relative; }
+  .cover .subtitle { font-size: 16px; opacity: 0.85; margin-bottom: 24px; position: relative; }
+  .cover .meta { display: flex; gap: 24px; font-size: 13px; opacity: 0.7; position: relative; }
+  .cover .meta span { display: flex; align-items: center; gap: 6px; }
+  
+  /* 目录 */
+  .toc {
+    background: #fff; border-radius: 12px; padding: 24px 28px; margin-bottom: 32px;
+    border: 1px solid var(--gray-200); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .toc h3 { font-size: 15px; color: var(--gray-700); margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; font-size: 14px; color: var(--primary); cursor: pointer; }
+  .toc li:hover { text-decoration: underline; }
+  .toc li span { color: var(--gray-500); }
+  
+  /* 章节 */
+  .section {
+    background: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 24px;
+    border: 1px solid var(--gray-200); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .section-header {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--gray-100);
+  }
+  .section-number {
+    width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .section h2 { font-size: 18px; font-weight: 600; color: var(--gray-900); }
+  
+  h3 { font-size: 15px; font-weight: 600; color: var(--gray-800); margin: 20px 0 10px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--gray-700); margin: 16px 0 8px; }
+  p { font-size: 14px; color: var(--gray-600); margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { font-size: 14px; color: var(--gray-600); margin-bottom: 4px; }
+  
+  /* 高亮盒子 */
+  .highlight-box {
+    border-radius: 10px; padding: 16px 20px; margin: 16px 0; font-size: 13px;
+  }
+  .highlight-box.blue { background: var(--primary-light); border-left: 4px solid var(--primary); }
+  .highlight-box.green { background: var(--secondary-light); border-left: 4px solid var(--secondary); }
+  .highlight-box.amber { background: var(--warning-light); border-left: 4px solid var(--warning); }
+  .highlight-box.red { background: var(--danger-light); border-left: 4px solid var(--danger); }
+  .highlight-box.purple { background: var(--purple-light); border-left: 4px solid var(--purple); }
+  .highlight-box strong { display: block; margin-bottom: 4px; color: var(--gray-800); }
+  
+  /* 表格 */
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;
+  }
+  th {
+    background: var(--gray-50); text-align: left; padding: 10px 14px; font-weight: 600;
+    color: var(--gray-700); border-bottom: 2px solid var(--gray-200);
+  }
+  td {
+    padding: 10px 14px; border-bottom: 1px solid var(--gray-100); color: var(--gray-600);
+    vertical-align: top;
+  }
+  tr:hover td { background: var(--gray-50); }
+  
+  /* 标签 */
+  .tag {
+    display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; margin: 2px 2px;
+  }
+  .tag-blue { background: #dbeafe; color: #1d4ed8; }
+  .tag-green { background: #d1fae5; color: #047857; }
+  .tag-amber { background: #fef3c7; color: #92400e; }
+  .tag-red { background: #fee2e2; color: #b91c1c; }
+  .tag-purple { background: #ede9fe; color: #6d28d9; }
+  .tag-gray { background: #f3f4f6; color: #4b5563; }
+  
+  /* 流程图容器 */
+  .flow-diagram {
+    background: var(--gray-50); border-radius: 10px; padding: 20px; margin: 16px 0;
+    border: 1px solid var(--gray-200); overflow-x: auto;
+  }
+  .flow-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+  }
+  .flow-node {
+    padding: 10px 18px; border-radius: 8px; font-size: 12px; font-weight: 500;
+    border: 1px solid; text-align: center; min-width: 100px;
+  }
+  .flow-arrow { color: var(--gray-400); font-size: 18px; }
+  
+  /* 对比卡片 */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .compare-card {
+    border-radius: 10px; padding: 16px 20px; border: 1px solid var(--gray-200);
+  }
+  .compare-card h4 { margin-top: 0; }
+  .compare-card ul { margin-bottom: 0; }
+  
+  /* 数据模型 */
+  .schema-block {
+    background: var(--gray-900); color: #e5e7eb; padding: 20px 24px; border-radius: 10px;
+    font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; line-height: 1.8;
+    margin: 16px 0; overflow-x: auto;
+  }
+  .schema-block .comment { color: #6b7280; }
+  .schema-block .keyword { color: #93c5fd; }
+  .schema-block .type { color: #86efac; }
+  .schema-block .field { color: #fde68a; }
+  
+  /* 卡片预览 */
+  .mockup {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 12px;
+    padding: 20px; margin: 16px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  }
+  .mockup-title { font-size: 12px; color: var(--gray-400); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  
+  /* 看板列 */
+  .kanban-preview {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0;
+  }
+  .kanban-col {
+    background: var(--gray-50); border-radius: 10px; padding: 12px; min-height: 120px;
+  }
+  .kanban-col-header {
+    font-size: 12px; font-weight: 600; margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 2px solid; display: flex; align-items: center; justify-content: space-between;
+  }
+  .kanban-col-header .count {
+    background: var(--gray-200); color: var(--gray-600); font-size: 11px;
+    padding: 1px 7px; border-radius: 10px;
+  }
+  .kanban-card {
+    background: #fff; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+    border: 1px solid var(--gray-200); font-size: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .kanban-card .card-title { font-weight: 600; color: var(--gray-800); margin-bottom: 4px; }
+  .kanban-card .card-meta { color: var(--gray-400); font-size: 11px; }
+
+  /* 印章 */
+  .stamp {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+    border-radius: 6px; font-size: 11px; font-weight: 600;
+  }
+  .stamp-progress { background: #dbeafe; color: #1d4ed8; }
+  .stamp-done { background: #d1fae5; color: #047857; }
+  .stamp-hold { background: #fef3c7; color: #92400e; }
+  .stamp-new { background: #ede9fe; color: #6d28d9; }
+
+  @media (max-width: 768px) {
+    .container { padding: 20px 16px 60px; }
+    .cover { padding: 32px 24px; }
+    .cover h1 { font-size: 24px; }
+    .section { padding: 20px; }
+    .compare-grid { grid-template-columns: 1fr; }
+    .kanban-preview { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ═══════ 封面 ═══════ -->
+<div class="cover">
+  <h1>产品需求看板</h1>
+  <div class="subtitle">从"事务归档"到"需求全景管理" — 重构策划文档</div>
+  <div class="meta">
+    <span>版本 V1.0</span>
+    <span>2026-09-03</span>
+    <span>基于：文件管理器 Demo / 归档时间线</span>
+    <span>设计：产品需求管理工作流</span>
+  </div>
+</div>
+
+<!-- ═══════ 目录 ═══════ -->
+<div class="toc">
+  <h3>目录</h3>
+  <ol>
+    <li onclick="document.getElementById('s1').scrollIntoView({behavior:'smooth'})">背景与问题分析 <span>— 为什么要重构</span></li>
+    <li onclick="document.getElementById('s2').scrollIntoView({behavior:'smooth'})">产品定位与核心场景 <span>— 解决什么问题</span></li>
+    <li onclick="document.getElementById('s3').scrollIntoView({behavior:'smooth'})">信息架构重构 <span>— 从"归档条目"到"需求-节点"二级结构</span></li>
+    <li onclick="document.getElementById('s4').scrollIntoView({behavior:'smooth'})">数据模型设计 <span>— 新增表结构与字段映射</span></li>
+    <li onclick="document.getElementById('s5').scrollIntoView({behavior:'smooth'})">看板视图设计 <span>— 四列看板 + 需求详情面板</span></li>
+    <li onclick="document.getElementById('s6').scrollIntoView({behavior:'smooth'})">需求详情页设计 <span>— 节点时间线 + 富内容记录</span></li>
+    <li onclick="document.getElementById('s7').scrollIntoView({behavior:'smooth'})">快速录入重构 <span>— 归档表单 → 节点记录表单</span></li>
+    <li onclick="document.getElementById('s8').scrollIntoView({behavior:'smooth'})">搜索与检索设计 <span>— 全局搜索 + 节点关键词定位</span></li>
+    <li onclick="document.getElementById('s9').scrollIntoView({behavior:'smooth'})">现有功能删改映射 <span>— 保留 / 改造 / 废弃清单</span></li>
+    <li onclick="document.getElementById('s10').scrollIntoView({behavior:'smooth'})">实施路线图 <span>— 分阶段交付计划</span></li>
+  </ol>
+</div>
+
+<!-- ═══════ 1. 背景与问题分析 ═══════ -->
+<div class="section" id="s1">
+  <div class="section-header">
+    <div class="section-number" style="background: var(--primary);">1</div>
+    <h2>背景与问题分析</h2>
+  </div>
+  
+  <h3>1.1 现状描述</h3>
+  <p>当前的"归档时间线"以<b>单条事务</b>为最小单元进行记录，每天完成一件事情就创建一条归档条目，通过标签来暗示这些条目属于同一个需求。数据结构是扁平的：</p>
+  
+  <div class="flow-diagram">
+    <div class="flow-row">
+      <div class="flow-node" style="background: var(--primary-light); border-color: var(--primary); color: var(--primary);">归档条目 A<br><small>标签: #智能搜索</small></div>
+      <div class="flow-node" style="background: var(--primary-light); border-color: var(--primary); color: var(--primary);">归档条目 B<br><small>标签: #智能搜索</small></div>
+      <div class="flow-node" style="background: var(--primary-light); border-color: var(--primary); color: var(--primary);">归档条目 C<br><small>标签: #AI命名</small></div>
+      <div class="flow-node" style="background: var(--primary-light); border-color: var(--primary); color: var(--primary);">归档条目 D<br><small>标签: #AI命名</small></div>
+    </div>
+    <p style="text-align: center; margin-top: 10px; font-size: 12px; color: var(--gray-400);">当前：扁平列表 + 标签隐式关联，缺少需求维度聚合</p>
+  </div>
+  
+  <h3>1.2 核心痛点</h3>
+  <table>
+    <tr>
+      <th style="width:30%">痛点</th>
+      <th>场景描述</th>
+      <th style="width:20%">频率</th>
+    </tr>
+    <tr>
+      <td><b>老板问进度时无法快速归因</b></td>
+      <td>"智能搜索做到哪一步了？" → 需要从几十条归档中人肉筛选带 #智能搜索 标签的条目，再拼凑出进度全景</td>
+      <td><span class="tag tag-red">每周 3-5 次</span></td>
+    </tr>
+    <tr>
+      <td><b>关键结论散落各处</b></td>
+      <td>"上次讨论的 embedding 模型选型结论是什么？" → 聊天记录、文档、飞书消息到处翻</td>
+      <td><span class="tag tag-red">每周 5+ 次</span></td>
+    </tr>
+    <tr>
+      <td><b>缺少需求全景视图</b></td>
+      <td>不知道手头同时推进了几个需求、哪些在进行中、哪些 hold 了、哪些快到 deadline</td>
+      <td><span class="tag tag-amber">持续</span></td>
+    </tr>
+    <tr>
+      <td><b>中间过程无法留存</b></td>
+      <td>沟通中的关键截图、方案对比文档、会议纪要没有统一挂载点</td>
+      <td><span class="tag tag-amber">每周 3+ 次</span></td>
+    </tr>
+    <tr>
+      <td><b>下一步 Todo 断链</b></td>
+      <td>归档记录的"下一步"与 Todo 系统割裂，需要手动在两个地方维护</td>
+      <td><span class="tag tag-amber">每日</span></td>
+    </tr>
+  </table>
+
+  <h3>1.3 根因分析</h3>
+  <div class="highlight-box red">
+    <strong>根因：缺少"需求"这一层级聚合</strong>
+    当前信息架构只有"日期 → 归档条目"两层，没有"需求 → 节点进展"的父子结构。标签只是弱关联，无法承载需求生命周期管理（状态流转、关键结论沉淀、文档挂载、进度追踪）的职责。
+  </div>
+</div>
+
+<!-- ═══════ 2. 产品定位与核心场景 ═══════ -->
+<div class="section" id="s2">
+  <div class="section-header">
+    <div class="section-number" style="background: var(--secondary);">2</div>
+    <h2>产品定位与核心场景</h2>
+  </div>
+  
+  <h3>2.1 产品定位</h3>
+  <div class="highlight-box blue">
+    <strong>产品需求看板 = 产品经理的个人需求作战室</strong>
+    以"需求"为核心管理单元，记录每一步推进的关键结论、产出、卡点和文档，实现"老板问到哪里，我就能在 3 秒内找到答案"的信息检索效率。
+  </div>
+  
+  <h3>2.2 核心场景</h3>
+  <table>
+    <tr>
+      <th>场景</th>
+      <th>用户故事</th>
+      <th>验收标准</th>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">S1 进度汇报</span></td>
+      <td>老板问"XX需求到哪一步了"，我打开看板直接看到该需求卡片：当前阶段、下一步 Todo、卡点</td>
+      <td>3 秒内找到需求卡片，一屏看全状态</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">S2 结论溯源</span></td>
+      <td>老板问"上次 embedding 选型的结论"，我在搜索框输入关键词，直接定位到某个需求的某个节点记录</td>
+      <td>搜索结果精确到节点级别，点击跳转到上下文</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-green">S3 过程记录</span></td>
+      <td>沟通完一个关键结论 / 收到一个重要文档，马上在对应需求下添加一条节点记录，挂载截图或文档链接</td>
+      <td>30 秒内完成一条节点记录（标题 + 内容 + 附件）</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-green">S4 全景管理</span></td>
+      <td>周一开工，看一眼看板：4 个需求进行中、1 个 hold、2 个已完成，每个的下一步一目了然</td>
+      <td>看板视图按状态分列，每列显示需求数 + 摘要</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-purple">S5 文档聚合</span></td>
+      <td>需求涉及的 PRD、评审纪要、设计稿链接、数据报告全部挂在该需求下，不再散落</td>
+      <td>每个需求有独立的文档/链接挂载区</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ═══════ 3. 信息架构重构 ═══════ -->
+<div class="section" id="s3">
+  <div class="section-header">
+    <div class="section-number" style="background: var(--warning);">3</div>
+    <h2>信息架构重构</h2>
+  </div>
+  
+  <h3>3.1 从扁平到树形</h3>
+  
+  <div class="compare-grid">
+    <div class="compare-card" style="background: var(--danger-light); border-color: #fecaca;">
+      <h4 style="color: var(--danger);">旧：归档时间线（扁平）</h4>
+      <ul>
+        <li>日期 → 归档条目（平铺）</li>
+        <li>标签弱关联同一需求</li>
+        <li>无状态流转概念</li>
+        <li>无父子关系</li>
+        <li>搜索只能到条目级别</li>
+      </ul>
+    </div>
+    <div class="compare-card" style="background: var(--secondary-light); border-color: #a7f3d0;">
+      <h4 style="color: var(--secondary);">新：产品需求看板（树形）</h4>
+      <ul>
+        <li><b>需求</b> → 节点记录（父子结构）</li>
+        <li>需求有独立状态流转</li>
+        <li>每个节点是一次关键进展</li>
+        <li>节点可挂载文档、图片、链接</li>
+        <li>搜索精确到节点 + 关键词高亮</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>3.2 新信息架构</h3>
+  <div class="flow-diagram">
+    <div style="text-align:center;">
+      <div style="display:inline-block; background:var(--primary); color:#fff; padding:12px 32px; border-radius:10px; font-size:14px; font-weight:600; margin-bottom:16px;">
+        产品需求看板
+      </div>
+      <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap;">
+        <div style="background:#fff; border:2px solid var(--primary); border-radius:10px; padding:16px; width:200px; text-align:left;">
+          <div style="font-size:13px; font-weight:600; color:var(--primary); margin-bottom:8px;">需求：智能文件搜索</div>
+          <div style="font-size:11px; color:var(--gray-500); margin-bottom:4px;">状态：<span class="stamp stamp-progress">进行中</span></div>
+          <div style="font-size:11px; color:var(--gray-400); border-top:1px dashed var(--gray-200); padding-top:6px; margin-top:6px;">
+            <div>节点 1: 竞品调研完成</div>
+            <div>节点 2: 方案评审通过</div>
+            <div>节点 3: 开发联调中...</div>
+          </div>
+        </div>
+        <div style="background:#fff; border:2px solid var(--secondary); border-radius:10px; padding:16px; width:200px; text-align:left;">
+          <div style="font-size:13px; font-weight:600; color:var(--secondary); margin-bottom:8px;">需求：AI 智能命名</div>
+          <div style="font-size:11px; color:var(--gray-500); margin-bottom:4px;">状态：<span class="stamp stamp-done">已完成</span></div>
+          <div style="font-size:11px; color:var(--gray-400); border-top:1px dashed var(--gray-200); padding-top:6px; margin-top:6px;">
+            <div>节点 1: 需求确认</div>
+            <div>节点 2: 开发完成</div>
+            <div>节点 3: 灰度验证通过</div>
+          </div>
+        </div>
+        <div style="background:#fff; border:2px solid var(--warning); border-radius:10px; padding:16px; width:200px; text-align:left;">
+          <div style="font-size:13px; font-weight:600; color:var(--warning); margin-bottom:8px;">需求：语音输入归档</div>
+          <div style="font-size:11px; color:var(--gray-500); margin-bottom:4px;">状态：<span class="stamp stamp-hold">Hold</span></div>
+          <div style="font-size:11px; color:var(--gray-400); border-top:1px dashed var(--gray-200); padding-top:6px; margin-top:6px;">
+            <div>节点 1: 技术调研</div>
+            <div>节点 2: 方案选型</div>
+            <div style="color:var(--danger);">卡点: 等 iOS 端排期</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <h3>3.3 需求生命周期</h3>
+  <div class="flow-diagram">
+    <div class="flow-row">
+      <div class="flow-node" style="background: var(--purple-light); border-color: var(--purple); color: var(--purple);">规划中</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: var(--primary-light); border-color: var(--primary); color: var(--primary);">进行中</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: var(--secondary-light); border-color: var(--secondary); color: var(--secondary);">已完成</div>
+    </div>
+    <div style="display:flex; justify-content:center; margin-top:10px;">
+      <div class="flow-node" style="background: var(--warning-light); border-color: var(--warning); color: var(--warning);">Hold（阻塞中）</div>
+    </div>
+    <p style="text-align:center; margin-top:8px; font-size:11px; color:var(--gray-400);">任何阶段均可流转到 Hold，解除阻塞后回到原状态</p>
+  </div>
+  
+  <h3>3.4 需求阶段（Phase）</h3>
+  <p>每个需求在"进行中"状态下，可标记当前所处的产品工作阶段，帮助精确回答"做到哪一步了"：</p>
+  <div class="flow-diagram">
+    <div class="flow-row">
+      <div class="flow-node" style="background: #f3e8ff; border-color: #c084fc; color: #7c3aed; font-size:11px;">需求调研</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: #e0e7ff; border-color: #818cf8; color: #4338ca; font-size:11px;">方案设计</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: #dbeafe; border-color: #60a5fa; color: #1d4ed8; font-size:11px;">评审排期</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: #d1fae5; border-color: #34d399; color: #047857; font-size:11px;">开发联调</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: #fef3c7; border-color: #fbbf24; color: #92400e; font-size:11px;">测试验收</div>
+      <div class="flow-arrow">&#10132;</div>
+      <div class="flow-node" style="background: #ecfdf5; border-color: #10b981; color: #065f46; font-size:11px;">灰度上线</div>
+    </div>
+  </div>
+  <div class="highlight-box green">
+    <strong>阶段可自定义</strong>
+    以上为预置的通用产品工作流，用户可根据自身团队流程自由增删阶段。阶段信息直接展示在看板卡片上，一眼可见当前进度。
+  </div>
+</div>
+
+<!-- ═══════ 4. 数据模型设计 ═══════ -->
+<div class="section" id="s4">
+  <div class="section-header">
+    <div class="section-number" style="background: var(--danger);">4</div>
+    <h2>数据模型设计</h2>
+  </div>
+  
+  <h3>4.1 新增表：demands（需求表）</h3>
+  <div class="schema-block">
+    <span class="keyword">CREATE TABLE</span> <span class="field">demands</span> (<br>
+    &nbsp;&nbsp;<span class="field">id</span>            <span class="type">TEXT PRIMARY KEY</span>,    <span class="comment">-- UUID</span><br>
+    &nbsp;&nbsp;<span class="field">title</span>         <span class="type">TEXT NOT NULL</span>,       <span class="comment">-- 需求名称，如"智能文件搜索"</span><br>
+    &nbsp;&nbsp;<span class="field">description</span>   <span class="type">TEXT</span>,                 <span class="comment">-- 需求简述 / 一句话目标</span><br>
+    &nbsp;&nbsp;<span class="field">status</span>        <span class="type">TEXT DEFAULT 'planning'</span>, <span class="comment">-- planning | active | hold | done</span><br>
+    &nbsp;&nbsp;<span class="field">phase</span>         <span class="type">TEXT</span>,                 <span class="comment">-- 当前阶段: 需求调研/方案设计/评审排期/开发联调/测试验收/灰度上线</span><br>
+    &nbsp;&nbsp;<span class="field">priority</span>      <span class="type">TEXT DEFAULT 'P1'</span>,    <span class="comment">-- P0 / P1 / P2</span><br>
+    &nbsp;&nbsp;<span class="field">owner</span>         <span class="type">TEXT</span>,                 <span class="comment">-- 负责人</span><br>
+    &nbsp;&nbsp;<span class="field">target_date</span>   <span class="type">TEXT</span>,                 <span class="comment">-- 期望上线日期</span><br>
+    &nbsp;&nbsp;<span class="field">blocker</span>       <span class="type">TEXT</span>,                 <span class="comment">-- 当前卡点</span><br>
+    &nbsp;&nbsp;<span class="field">next_todo</span>     <span class="type">TEXT</span>,                 <span class="comment">-- 下一步待办（自动从最新节点同步）</span><br>
+    &nbsp;&nbsp;<span class="field">tags</span>          <span class="type">TEXT</span>,                 <span class="comment">-- JSON 数组: ["搜索", "AI"]</span><br>
+    &nbsp;&nbsp;<span class="field">doc_links</span>     <span class="type">TEXT</span>,                 <span class="comment">-- JSON 数组: [{name, url, type}]</span><br>
+    &nbsp;&nbsp;<span class="field">sort_order</span>    <span class="type">INTEGER DEFAULT 0</span>,   <span class="comment">-- 看板列内排序权重</span><br>
+    &nbsp;&nbsp;<span class="field">created_at</span>    <span class="type">INTEGER</span>,              <span class="comment">-- Unix 时间戳</span><br>
+    &nbsp;&nbsp;<span class="field">updated_at</span>    <span class="type">INTEGER</span>               <span class="comment">-- Unix 时间戳</span><br>
+    );
+  </div>
+  
+  <h3>4.2 改造表：archives → demand_nodes（需求节点表）</h3>
+  <div class="highlight-box amber">
+    <strong>改造策略：在现有 archives 表基础上扩展，而非新建</strong>
+    现有 archives 表保留全部字段，新增 demand_id 外键将条目挂载到需求下。未关联需求的旧数据仍可独立显示（兼容旧数据）。
+  </div>
+  <div class="schema-block">
+    <span class="comment">-- 在现有 archives 表上新增以下字段</span><br>
+    <span class="keyword">ALTER TABLE</span> <span class="field">archives</span> <span class="keyword">ADD COLUMN</span><br>
+    &nbsp;&nbsp;<span class="field">demand_id</span>    <span class="type">TEXT REFERENCES demands(id)</span>,  <span class="comment">-- 所属需求 ID（可为空=独立归档）</span><br>
+    <span class="keyword">ALTER TABLE</span> <span class="field">archives</span> <span class="keyword">ADD COLUMN</span><br>
+    &nbsp;&nbsp;<span class="field">node_type</span>    <span class="type">TEXT DEFAULT 'progress'</span>,     <span class="comment">-- progress | conclusion | document | milestone | blocker</span><br>
+    <span class="keyword">ALTER TABLE</span> <span class="field">archives</span> <span class="keyword">ADD COLUMN</span><br>
+    &nbsp;&nbsp;<span class="field">attachments</span>  <span class="type">TEXT</span>,                        <span class="comment">-- JSON: [{name, path, type, url}] 图片/文档/链接</span><br>
+    <span class="keyword">ALTER TABLE</span> <span class="field">archives</span> <span class="keyword">ADD COLUMN</span><br>
+    &nbsp;&nbsp;<span class="field">is_key_conclusion</span> <span class="type">BOOLEAN DEFAULT 0</span>,     <span class="comment">-- 标记为关键结论（搜索加权）</span><br>
+    <br>
+    <span class="comment">-- 创建索引加速按需求查询</span><br>
+    <span class="keyword">CREATE INDEX</span> idx_archives_demand <span class="keyword">ON</span> archives(demand_id);<br>
+    <span class="keyword">CREATE INDEX</span> idx_archives_key <span class="keyword">ON</span> archives(is_key_conclusion) <span class="keyword">WHERE</span> is_key_conclusion = 1;
+  </div>
+
+  <h3>4.3 节点类型说明</h3>
+  <table>
+    <tr>
+      <th>node_type</th>
+      <th>含义</th>
+      <th>图标</th>
+      <th>典型内容</th>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">progress</span></td>
+      <td>进展记录</td>
+      <td>&#9654;</td>
+      <td>"完成了竞品分析文档""前端页面开发完成"</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-purple">conclusion</span></td>
+      <td>关键结论</td>
+      <td>&#9733;</td>
+      <td>"选定 bge-m3 作为 embedding 模型""方案 B 评审通过"</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-green">document</span></td>
+      <td>文档/资料</td>
+      <td>&#128196;</td>
+      <td>PRD 链接、评审纪要、设计稿 URL</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-amber">milestone</span></td>
+      <td>里程碑</td>
+      <td>&#127937;</td>
+      <td>"需求评审通过 9/3""灰度上线 9/15"</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-red">blocker</span></td>
+      <td>卡点/风险</td>
+      <td>&#9888;</td>
+      <td>"等后端接口 9/5""设计资源排不上"</td>
+    </tr>
+  </table>
+
+  <h3>4.4 新增表：demand_doc_links（需求级文档链接）</h3>
+  <div class="schema-block">
+    <span class="keyword">CREATE TABLE</span> <span class="field">demand_doc_links</span> (<br>
+    &nbsp;&nbsp;<span class="field">id</span>          <span class="type">TEXT PRIMARY KEY</span>,<br>
+    &nbsp;&nbsp;<span class="field">demand_id</span>   <span class="type">TEXT NOT NULL REFERENCES demands(id)</span>,<br>
+    &nbsp;&nbsp;<span class="field">name</span>        <span class="type">TEXT NOT NULL</span>,           <span class="comment">-- 显示名: "PRD V2.1"</span><br>
+    &nbsp;&nbsp;<span class="field">url</span>         <span class="type">TEXT NOT NULL</span>,           <span class="comment">-- 链接地址</span><br>
+    &nbsp;&nbsp;<span class="field">doc_type</span>    <span class="type">TEXT DEFAULT 'link'</span>,    <span class="comment">-- prd | design | meeting | data | link</span><br>
+    &nbsp;&nbsp;<span class="field">created_at</span>  <span class="type">INTEGER</span><br>
+    );
+  </div>
+</div>
+
+<!-- ═══════ 5. 看板视图设计 ═══════ -->
+<div class="section" id="s5">
+  <div class="section-header">
+    <div class="section-number" style="background: var(--purple);">5</div>
+    <h2>看板视图设计</h2>
+  </div>
+  
+  <h3>5.1 四列看板布局</h3>
+  <p>替代原有的"按日期倒序时间线"，改为按需求状态分列的看板视图作为主视图：</p>
+  
+  <div class="kanban-preview">
+    <div class="kanban-col">
+      <div class="kanban-col-header" style="border-color: var(--purple); color: var(--purple);">
+        规划中 <span class="count">2</span>
+      </div>
+      <div class="kanban-card">
+        <div class="card-title">收纳区暂存架</div>
+        <div class="card-meta">P1 &middot; 需求调研 &middot; 1 个节点</div>
+      </div>
+      <div class="kanban-card">
+        <div class="card-title">文件智能分类</div>
+        <div class="card-meta">P2 &middot; 需求调研 &middot; 0 个节点</div>
+      </div>
+    </div>
+    
+    <div class="kanban-col">
+      <div class="kanban-col-header" style="border-color: var(--primary); color: var(--primary);">
+        进行中 <span class="count">3</span>
+      </div>
+      <div class="kanban-card" style="border-left: 3px solid var(--danger);">
+        <div class="card-title">智能文件搜索</div>
+        <div class="card-meta">P0 &middot; 开发联调 &middot; 目标 9/15</div>
+        <div style="font-size:11px; color:var(--danger); margin-top:4px;">&#9888; 卡点: 等后端接口</div>
+      </div>
+      <div class="kanban-card">
+        <div class="card-title">智能标签体系</div>
+        <div class="card-meta">P1 &middot; 方案设计 &middot; 5 个节点</div>
+      </div>
+      <div class="kanban-card">
+        <div class="card-title">AI 智能命名</div>
+        <div class="card-meta">P1 &middot; 测试验收 &middot; 目标 9/10</div>
+      </div>
+    </div>
+    
+    <div class="kanban-col">
+      <div class="kanban-col-header" style="border-color: var(--warning); color: var(--warning);">
+        Hold <span class="count">1</span>
+      </div>
+      <div class="kanban-card">
+        <div class="card-title">语音输入归档</div>
+        <div class="card-meta">P2 &middot; 技术调研</div>
+        <div style="font-size:11px; color:var(--warning); margin-top:4px;">&#9888; 等 iOS 端排期确认</div>
+      </div>
+    </div>
+    
+    <div class="kanban-col">
+      <div class="kanban-col-header" style="border-color: var(--secondary); color: var(--secondary);">
+        已完成 <span class="count">2</span>
+      </div>
+      <div class="kanban-card" style="opacity: 0.7;">
+        <div class="card-title">文件检索优化 V1</div>
+        <div class="card-meta">P1 &middot; 已上线 8/20</div>
+      </div>
+      <div class="kanban-card" style="opacity: 0.7;">
+        <div class="card-title">智能文件夹</div>
+        <div class="card-meta">P0 &middot; 已上线 8/28</div>
+      </div>
+    </div>
+  </div>
+  
+  <h3>5.2 看板卡片信息层级</h3>
+  <p>每张卡片需要在有限空间内传达最关键的信息，确保"扫一眼"即可判断状态：</p>
+  <table>
+    <tr>
+      <th>层级</th>
+      <th>信息</th>
+      <th>视觉处理</th>
+    </tr>
+    <tr>
+      <td>L1 核心</td>
+      <td>需求名称</td>
+      <td>14px 加粗，黑色</td>
+    </tr>
+    <tr>
+      <td>L2 状态</td>
+      <td>优先级 + 当前阶段 + 目标日期</td>
+      <td>12px 灰色，优先级色标 + 阶段标签</td>
+    </tr>
+    <tr>
+      <td>L3 风险</td>
+      <td>卡点信息（如有）</td>
+      <td>11px 红色/橙色，带警告图标，仅有卡点时显示</td>
+    </tr>
+    <tr>
+      <td>L4 下一步</td>
+      <td>最近一条 Todo</td>
+      <td>11px 灰色，hover 时显示</td>
+    </tr>
+  </table>
+  
+  <h3>5.3 看板交互</h3>
+  <table>
+    <tr>
+      <th>操作</th>
+      <th>交互方式</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td>拖拽移列</td>
+      <td>拖拽卡片跨列</td>
+      <td>直接变更需求状态（如从"进行中"拖到"Hold"）</td>
+    </tr>
+    <tr>
+      <td>点击卡片</td>
+      <td>单击</td>
+      <td>展开右侧"需求详情面板"（侧滑面板，类似当前 Todo 侧边栏）</td>
+    </tr>
+    <tr>
+      <td>快速新建</td>
+      <td>列底部"+"按钮</td>
+      <td>弹出精简表单：需求名 + 优先级 + 阶段即可创建</td>
+    </tr>
+    <tr>
+      <td>列内排序</td>
+      <td>拖拽上下</td>
+      <td>同一列内手动调整优先顺序</td>
+    </tr>
+    <tr>
+      <td>筛选</td>
+      <td>顶部搜索栏 + 标签筛选</td>
+      <td>保留现有搜索 + 标签筛选能力，改为按需求名 + 节点内容搜索</td>
+    </tr>
+  </table>
+
+  <h3>5.4 视图切换</h3>
+  <div class="highlight-box purple">
+    <strong>看板视图为默认主视图，同时保留时间线视图作为辅助</strong>
+    <ul style="margin-top:8px; margin-bottom:0;">
+      <li><b>看板视图（默认）</b>：按需求状态四列展示，聚焦全景管理</li>
+      <li><b>时间线视图（切换）</b>：保留按日期倒序的节点流水，便于回顾"今天做了什么"</li>
+    </ul>
+    顶部标题栏右侧提供视图切换按钮（看板 / 时间线），切换后记忆用户偏好。
+  </div>
+</div>
+
+<!-- ═══════ 6. 需求详情页设计 ═══════ -->
+<div class="section" id="s6">
+  <div class="section-header">
+    <div class="section-number" style="background: #0891b2;">6</div>
+    <h2>需求详情页设计</h2>
+  </div>
+  
+  <h3>6.1 详情面板布局</h3>
+  <p>点击看板卡片后，从右侧滑出详情面板（复用当前 Todo 侧边栏的拖拽宽度能力），面板内分为四个区域：</p>
+  
+  <div class="mockup">
+    <div class="mockup-title">需求详情面板 — 线框预览</div>
+    <div style="border: 2px solid var(--gray-200); border-radius: 10px; overflow: hidden;">
+      <!-- 头部 -->
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--gray-100); background: var(--gray-50);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="tag tag-red">P0</span>
+            <span style="font-size:16px; font-weight:600; color:var(--gray-900);">智能文件搜索</span>
+          </div>
+          <span class="stamp stamp-progress">进行中 &middot; 开发联调</span>
+        </div>
+        <div style="font-size:12px; color:var(--gray-400);">
+          目标上线: 2026-09-15 &middot; 创建于 2026-08-10 &middot; 节点 12 条
+        </div>
+      </div>
+      
+      <!-- 区域 A: 状态信息 -->
+      <div style="padding: 14px 20px; border-bottom: 1px solid var(--gray-100);">
+        <div style="font-size:12px; font-weight:600; color:var(--gray-700); margin-bottom:8px;">A. 状态速览</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px;">
+          <div><span style="color:var(--gray-400);">当前阶段:</span> <span style="color:var(--primary); font-weight:500;">开发联调</span></div>
+          <div><span style="color:var(--gray-400);">目标日期:</span> 2026-09-15</div>
+          <div style="grid-column:span 2;"><span style="color:var(--gray-400);">卡点:</span> <span style="color:var(--danger);">等后端搜索接口 @张三 承诺 9/5</span></div>
+          <div style="grid-column:span 2;"><span style="color:var(--gray-400);">下一步:</span> 接口联调后跑通端到端 Demo</div>
+        </div>
+      </div>
+      
+      <!-- 区域 B: 文档链接 -->
+      <div style="padding: 14px 20px; border-bottom: 1px solid var(--gray-100);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:600; color:var(--gray-700);">B. 关联文档</span>
+          <span style="font-size:11px; color:var(--primary); cursor:pointer;">+ 添加</span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <span style="font-size:11px; padding:4px 10px; background:#eef2ff; color:#4338ca; border-radius:6px; border:1px solid #c7d2fe;">PRD V2.1</span>
+          <span style="font-size:11px; padding:4px 10px; background:#fdf4ff; color:#a21caf; border-radius:6px; border:1px solid #e9d5ff;">交互设计稿</span>
+          <span style="font-size:11px; padding:4px 10px; background:#ecfdf5; color:#047857; border-radius:6px; border:1px solid #a7f3d0;">评审纪要 9/1</span>
+          <span style="font-size:11px; padding:4px 10px; background:#fff7ed; color:#c2410c; border-radius:6px; border:1px solid #fed7aa;">竞品分析报告</span>
+        </div>
+      </div>
+      
+      <!-- 区域 C: 节点时间线 -->
+      <div style="padding: 14px 20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <span style="font-size:12px; font-weight:600; color:var(--gray-700);">C. 推进时间线</span>
+          <span style="font-size:11px; color:var(--primary); cursor:pointer;">+ 记录节点</span>
+        </div>
+        
+        <!-- 节点列表 -->
+        <div style="position:relative; padding-left:20px;">
+          <div style="position:absolute; left:5px; top:6px; bottom:6px; width:2px; background:var(--gray-200);"></div>
+          
+          <div style="position:relative; margin-bottom:14px;">
+            <div style="position:absolute; left:-20px; top:4px; width:12px; height:12px; border-radius:50%; background:var(--danger); border:2px solid #fff;"></div>
+            <div style="font-size:11px; color:var(--gray-400); margin-bottom:2px;">2026-09-03 &middot; 卡点</div>
+            <div style="font-size:13px; color:var(--gray-800); font-weight:500;">等后端搜索接口 — @张三 承诺 9/5 提供</div>
+          </div>
+          
+          <div style="position:relative; margin-bottom:14px;">
+            <div style="position:absolute; left:-20px; top:4px; width:12px; height:12px; border-radius:50%; background:var(--purple); border:2px solid #fff;"></div>
+            <div style="font-size:11px; color:var(--gray-400); margin-bottom:2px;">2026-09-01 &middot; 关键结论 &#9733;</div>
+            <div style="font-size:13px; color:var(--gray-800); font-weight:500;">选定 bge-m3 作为 embedding 模型</div>
+            <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">对比了 bge-m3 / nomic-embed / mxbai-embed，bge-m3 中文效果最好，1024维，Ollama 直接支持</div>
+            <div style="margin-top:6px;">
+              <span style="font-size:10px; padding:2px 8px; background:#f3f4f6; color:#6b7280; border-radius:4px;">&#128206; embedding选型对比.xlsx</span>
+            </div>
+          </div>
+          
+          <div style="position:relative; margin-bottom:14px;">
+            <div style="position:absolute; left:-20px; top:4px; width:12px; height:12px; border-radius:50%; background:var(--primary); border:2px solid #fff;"></div>
+            <div style="font-size:11px; color:var(--gray-400); margin-bottom:2px;">2026-08-28 &middot; 进展</div>
+            <div style="font-size:13px; color:var(--gray-800); font-weight:500;">前端搜索 UI 开发完成，支持关键词 + 语义混合搜索</div>
+          </div>
+          
+          <div style="position:relative; margin-bottom:4px;">
+            <div style="position:absolute; left:-20px; top:4px; width:12px; height:12px; border-radius:50%; background:var(--secondary); border:2px solid #fff;"></div>
+            <div style="font-size:11px; color:var(--gray-400); margin-bottom:2px;">2026-08-20 &middot; 里程碑</div>
+            <div style="font-size:13px; color:var(--gray-800); font-weight:500;">需求评审通过，进入开发阶段</div>
+            <div style="margin-top:6px;">
+              <span style="font-size:10px; padding:2px 8px; background:#f3f4f6; color:#6b7280; border-radius:4px;">&#128206; 评审纪要_0820.pdf</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>6.2 详情面板交互</h3>
+  <table>
+    <tr>
+      <th>区域</th>
+      <th>操作</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td>A 状态速览</td>
+      <td>点击任意字段直接编辑</td>
+      <td>状态、阶段为下拉选择；卡点、下一步为行内输入</td>
+    </tr>
+    <tr>
+      <td>B 关联文档</td>
+      <td>"+ 添加"按钮</td>
+      <td>输入链接 URL + 名称 + 类型（PRD / 设计稿 / 纪要 / 数据 / 其他），点击标签直接在浏览器中打开</td>
+    </tr>
+    <tr>
+      <td>C 推进时间线</td>
+      <td>"+ 记录节点"</td>
+      <td>弹出精简表单（复用改造后的 QuickArchiveModal），自动关联当前需求</td>
+    </tr>
+    <tr>
+      <td>C 节点条目</td>
+      <td>点击展开</td>
+      <td>展开查看完整内容 + 附件列表 + 编辑 / 删除操作</td>
+    </tr>
+    <tr>
+      <td>C 关键结论</td>
+      <td>带星标标记</td>
+      <td>标记为"关键结论"的节点全局搜索加权，且在需求卡片 hover 时摘要展示</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ═══════ 7. 快速录入重构 ═══════ -->
+<div class="section" id="s7">
+  <div class="section-header">
+    <div class="section-number" style="background: #ea580c;">7</div>
+    <h2>快速录入重构</h2>
+  </div>
+  
+  <h3>7.1 表单改造</h3>
+  <p>现有 QuickArchiveModal 改造为"节点记录表单"，保留 AI 预填 + 语音输入 + 标题解析能力，增加需求关联：</p>
+  
+  <div class="compare-grid">
+    <div class="compare-card" style="background: var(--gray-50);">
+      <h4>旧字段</h4>
+      <ul>
+        <li>标题 <span class="tag tag-green">保留</span></li>
+        <li>项目 <span class="tag tag-red">改为"所属需求"</span></li>
+        <li>优先级 <span class="tag tag-amber">移到需求级别</span></li>
+        <li>耗时 <span class="tag tag-green">保留</span></li>
+        <li>产出/结论 <span class="tag tag-green">保留（改名"内容记录"）</span></li>
+        <li>卡点 <span class="tag tag-green">保留</span></li>
+        <li>标签 <span class="tag tag-amber">保留（节点级）</span></li>
+        <li>下一步 <span class="tag tag-green">保留</span></li>
+        <li>附件 <span class="tag tag-green">保留 + 增强</span></li>
+      </ul>
+    </div>
+    <div class="compare-card" style="background: var(--primary-light);">
+      <h4>新字段</h4>
+      <ul>
+        <li><b>所属需求</b>（下拉选择 / 新建）<span class="tag tag-blue">新增</span></li>
+        <li><b>节点类型</b>（进展 / 结论 / 文档 / 里程碑 / 卡点）<span class="tag tag-blue">新增</span></li>
+        <li><b>标记为关键结论</b>（开关）<span class="tag tag-blue">新增</span></li>
+        <li><b>附件增强</b>：支持粘贴图片 + 文档链接 + 本地文件<span class="tag tag-blue">增强</span></li>
+        <li>标题 <span class="tag tag-green">保留</span></li>
+        <li>内容记录（原"产出"）<span class="tag tag-green">保留</span></li>
+        <li>卡点 <span class="tag tag-green">保留</span></li>
+        <li>下一步 <span class="tag tag-green">保留</span></li>
+        <li>耗时 <span class="tag tag-green">保留</span></li>
+      </ul>
+    </div>
+  </div>
+  
+  <h3>7.2 AI 智能预填增强</h3>
+  <div class="highlight-box blue">
+    <strong>AI 预填新增能力</strong>
+    <ul style="margin-top:8px; margin-bottom:0;">
+      <li><b>需求智能关联</b>：根据标题 / 语音内容，AI 自动识别应关联到哪个已有需求（基于需求名 + 历史节点语义匹配）</li>
+      <li><b>节点类型推断</b>：根据内容语义自动判断节点类型（如含"决定""选定"→ 结论；含"卡住""等待"→ 卡点）</li>
+      <li><b>关键结论自动标记</b>：AI 识别高价值结论性内容，自动开启"关键结论"标记</li>
+    </ul>
+  </div>
+  
+  <h3>7.3 录入入口</h3>
+  <table>
+    <tr>
+      <th>入口</th>
+      <th>场景</th>
+      <th>行为</th>
+    </tr>
+    <tr>
+      <td>看板右上角 "+" 按钮</td>
+      <td>通用新建</td>
+      <td>打开完整表单，需求下拉默认空</td>
+    </tr>
+    <tr>
+      <td>需求详情面板 "+ 记录节点"</td>
+      <td>在指定需求下追加</td>
+      <td>打开表单，需求字段自动锁定为当前需求</td>
+    </tr>
+    <tr>
+      <td>Ctrl+M 全局快捷键</td>
+      <td>语音快速录入</td>
+      <td>打开表单 + 自动开始录音（保留现有语音流程）</td>
+    </tr>
+    <tr>
+      <td>右上角呼吸光点</td>
+      <td>待办提醒关联</td>
+      <td>从 Todo 拉起表单，自动关联 Todo 来源需求</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ═══════ 8. 搜索与检索设计 ═══════ -->
+<div class="section" id="s8">
+  <div class="section-header">
+    <div class="section-number" style="background: #0d9488;">8</div>
+    <h2>搜索与检索设计</h2>
+  </div>
+  
+  <h3>8.1 核心目标</h3>
+  <div class="highlight-box green">
+    <strong>老板问任何关键信息，3 秒内搜到对应节点</strong>
+    搜索范围覆盖：需求名 → 节点标题 → 节点内容 → 附件名 → 标签 → 卡点。搜索结果精确到节点级别，展示"需求名 > 节点标题"的面包屑路径。
+  </div>
+  
+  <h3>8.2 搜索架构</h3>
+  <table>
+    <tr>
+      <th>搜索层</th>
+      <th>索引来源</th>
+      <th>匹配方式</th>
+      <th>权重</th>
+    </tr>
+    <tr>
+      <td>L1 需求名</td>
+      <td>demands.title</td>
+      <td>模糊匹配</td>
+      <td>最高</td>
+    </tr>
+    <tr>
+      <td>L2 关键结论</td>
+      <td>archives (is_key_conclusion=1)</td>
+      <td>全文搜索</td>
+      <td>高</td>
+    </tr>
+    <tr>
+      <td>L3 节点标题</td>
+      <td>archives.title</td>
+      <td>模糊匹配</td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td>L4 节点内容</td>
+      <td>archives.output</td>
+      <td>全文搜索</td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td>L5 语义搜索</td>
+      <td>vec_files (embedding)</td>
+      <td>向量余弦相似</td>
+      <td>辅助（当关键词无结果时降级到语义搜索）</td>
+    </tr>
+  </table>
+  
+  <h3>8.3 搜索结果展示</h3>
+  <div class="mockup">
+    <div class="mockup-title">搜索结果预览</div>
+    <div style="padding:12px; background:var(--gray-50); border-radius:8px;">
+      <div style="margin-bottom:12px; padding:10px; background:#fff; border-radius:8px; border:1px solid var(--gray-200);">
+        <div style="font-size:11px; color:var(--gray-400); margin-bottom:4px;">智能文件搜索 > 关键结论 &middot; 2026-09-01</div>
+        <div style="font-size:13px; font-weight:500; color:var(--gray-800);">选定 <mark style="background:#fef08a; padding:0 2px;">bge-m3</mark> 作为 <mark style="background:#fef08a; padding:0 2px;">embedding</mark> 模型</div>
+        <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">对比了 bge-m3 / nomic-embed / mxbai-embed，bge-m3 中文效果最好...</div>
+      </div>
+      <div style="padding:10px; background:#fff; border-radius:8px; border:1px solid var(--gray-200);">
+        <div style="font-size:11px; color:var(--gray-400); margin-bottom:4px;">智能文件搜索 > 进展 &middot; 2026-08-28</div>
+        <div style="font-size:13px; font-weight:500; color:var(--gray-800);">前端搜索 UI 开发完成，支持关键词 + 语义混合搜索</div>
+        <div style="font-size:12px; color:var(--gray-500); margin-top:4px;">基于 <mark style="background:#fef08a; padding:0 2px;">embedding</mark> 向量 + FTS5 全文索引的双路检索...</div>
+      </div>
+    </div>
+  </div>
+  
+  <h3>8.4 搜索交互</h3>
+  <ul>
+    <li><b>输入即搜</b>：防抖 300ms，实时展示结果（保留现有搜索体验）</li>
+    <li><b>关键词高亮</b>：搜索关键词在结果中黄色高亮标记</li>
+    <li><b>面包屑导航</b>：每条结果展示 "需求名 > 节点类型 > 日期" 路径</li>
+    <li><b>点击跳转</b>：点击搜索结果 → 打开对应需求详情面板 → 自动滚动到目标节点</li>
+    <li><b>筛选增强</b>：可按需求、节点类型、日期范围、仅关键结论进行筛选</li>
+  </ul>
+</div>
+
+<!-- ═══════ 9. 现有功能删改映射 ═══════ -->
+<div class="section" id="s9">
+  <div class="section-header">
+    <div class="section-number" style="background: #64748b;">9</div>
+    <h2>现有功能删改映射</h2>
+  </div>
+  
+  <h3>9.1 功能处理清单</h3>
+  <table>
+    <tr>
+      <th style="width:25%">现有功能</th>
+      <th style="width:10%">处理</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td>归档时间线主视图</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>默认改为看板视图；原时间线降级为辅助视图（切换可用），按需求维度重组数据</td>
+    </tr>
+    <tr>
+      <td>按日期分组展示</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>时间线视图保留日期分组；看板视图改为按需求状态分列</td>
+    </tr>
+    <tr>
+      <td>统计摘要卡片</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>改为需求维度统计：进行中数 / 本周新增节点数 / 有卡点的需求数 / 已完成数</td>
+    </tr>
+    <tr>
+      <td>搜索 + 标签筛选</td>
+      <td><span class="tag tag-green">增强</span></td>
+      <td>扩展为全局搜索（需求名 + 节点内容 + 关键结论），增加需求筛选、节点类型筛选</td>
+    </tr>
+    <tr>
+      <td>优先级筛选 (P0/P1/P2)</td>
+      <td><span class="tag tag-green">保留</span></td>
+      <td>改为按需求优先级筛选</td>
+    </tr>
+    <tr>
+      <td>卡片展开详情</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>看板卡片点击改为打开需求详情侧边面板；节点在详情面板内展开</td>
+    </tr>
+    <tr>
+      <td>编辑/删除归档</td>
+      <td><span class="tag tag-green">保留</span></td>
+      <td>移入需求详情面板的节点行内操作</td>
+    </tr>
+    <tr>
+      <td>QuickArchiveModal 表单</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>"项目"改为"所属需求"下拉；新增节点类型选择、关键结论标记；保留 AI 预填 + 语音输入</td>
+    </tr>
+    <tr>
+      <td>AI 预填（smart_prefill）</td>
+      <td><span class="tag tag-green">增强</span></td>
+      <td>增加自动匹配所属需求、推断节点类型、识别关键结论</td>
+    </tr>
+    <tr>
+      <td>语音输入 (SFSpeech/Whisper)</td>
+      <td><span class="tag tag-green">保留</span></td>
+      <td>完整保留现有语音输入链路，后续升级为 Whisper</td>
+    </tr>
+    <tr>
+      <td>标题智能解析</td>
+      <td><span class="tag tag-green">增强</span></td>
+      <td>改为同时解析所属需求（而非"项目名"）</td>
+    </tr>
+    <tr>
+      <td>Todo 侧边栏</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>保留 Todo 追踪能力；Todo 来源从"归档的下一步"改为"需求节点的下一步"，自动关联需求维度</td>
+    </tr>
+    <tr>
+      <td>Todo 闪烁提醒</td>
+      <td><span class="tag tag-green">保留</span></td>
+      <td>保留当天紧急 Todo 5 秒闪烁效果</td>
+    </tr>
+    <tr>
+      <td>AI 报告生成</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>改为按需求维度生成周报/月报，聚合各需求的进展节点</td>
+    </tr>
+    <tr>
+      <td>右上角呼吸光点</td>
+      <td><span class="tag tag-green">保留</span></td>
+      <td>保留现有的待办提醒入口</td>
+    </tr>
+    <tr>
+      <td>linkedFiles 附件</td>
+      <td><span class="tag tag-green">增强</span></td>
+      <td>扩展为 attachments 字段，支持本地文件 + URL 链接 + 粘贴图片，提供预览缩略图</td>
+    </tr>
+    <tr>
+      <td>Markdown 导出 (vault)</td>
+      <td><span class="tag tag-amber">改造</span></td>
+      <td>改为按需求维度导出：一个需求一个 .md 文件，包含全部节点时间线</td>
+    </tr>
+  </table>
+  
+  <h3>9.2 废弃功能</h3>
+  <table>
+    <tr>
+      <th>功能</th>
+      <th>废弃原因</th>
+    </tr>
+    <tr>
+      <td>"项目"字段（archive.project）</td>
+      <td>被"所属需求"(demand_id) 完全替代。旧数据的 project 字段可自动映射为独立需求</td>
+    </tr>
+    <tr>
+      <td>标签隐式关联需求</td>
+      <td>被显式的 demand_id 父子关系替代。标签保留，但职责回归"内容分类"而非"需求关联"</td>
+    </tr>
+  </table>
+
+  <h3>9.3 数据迁移策略</h3>
+  <div class="highlight-box blue">
+    <strong>向下兼容：旧数据零丢失</strong>
+    <ol style="margin-top:8px; margin-bottom:0;">
+      <li><b>自动需求生成</b>：遍历旧 archives 的 project 字段，为每个唯一 project 自动创建一条 demand（状态=active）</li>
+      <li><b>自动关联</b>：将同一 project 下的所有 archives 的 demand_id 指向对应的 demand</li>
+      <li><b>无项目的旧条目</b>：demand_id 留空，在时间线视图中照常展示；用户可手动拖入某个需求</li>
+      <li><b>标签迁移</b>：旧数据标签保持不变，仅新数据的标签职责聚焦于内容分类</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ═══════ 10. 实施路线图 ═══════ -->
+<div class="section" id="s10">
+  <div class="section-header">
+    <div class="section-number" style="background: #be123c;">10</div>
+    <h2>实施路线图</h2>
+  </div>
+  
+  <h3>10.1 分阶段交付</h3>
+  <table>
+    <tr>
+      <th style="width:15%">阶段</th>
+      <th style="width:30%">交付内容</th>
+      <th>详细说明</th>
+      <th style="width:12%">预估工作量</th>
+    </tr>
+    <tr>
+      <td><span class="stamp stamp-new">Phase 1</span><br>数据层</td>
+      <td>demands 表 + archives 扩展 + 数据迁移</td>
+      <td>
+        <ul>
+          <li>创建 demands 表和 demand_doc_links 表</li>
+          <li>archives 表新增 demand_id / node_type / attachments / is_key_conclusion 字段</li>
+          <li>旧数据自动迁移（project → demand）</li>
+          <li>新增 Tauri 命令：create_demand / update_demand / query_demands / delete_demand</li>
+        </ul>
+      </td>
+      <td>2-3 天</td>
+    </tr>
+    <tr>
+      <td><span class="stamp stamp-new">Phase 2</span><br>看板视图</td>
+      <td>四列看板 + 需求卡片 + 拖拽</td>
+      <td>
+        <ul>
+          <li>新建 DemandKanbanView 组件（替代 ArchiveTimelineView 作为默认视图）</li>
+          <li>四列布局：规划中 / 进行中 / Hold / 已完成</li>
+          <li>卡片展示需求名 + 阶段 + 优先级 + 卡点</li>
+          <li>拖拽跨列变更状态</li>
+          <li>视图切换按钮（看板 / 时间线）</li>
+        </ul>
+      </td>
+      <td>3-4 天</td>
+    </tr>
+    <tr>
+      <td><span class="stamp stamp-new">Phase 3</span><br>详情面板</td>
+      <td>需求详情侧边面板 + 节点时间线</td>
+      <td>
+        <ul>
+          <li>右侧滑出面板（复用 TodoSidebar 的拖拽宽度能力）</li>
+          <li>状态速览区 + 文档链接区 + 节点时间线区</li>
+          <li>节点按时间倒序展示，不同类型不同颜色圆点</li>
+          <li>关键结论星标标记</li>
+        </ul>
+      </td>
+      <td>3-4 天</td>
+    </tr>
+    <tr>
+      <td><span class="stamp stamp-new">Phase 4</span><br>表单改造</td>
+      <td>QuickArchiveModal → 节点记录表单</td>
+      <td>
+        <ul>
+          <li>"项目"改为"所属需求"下拉 + 新建入口</li>
+          <li>新增节点类型选择、关键结论开关</li>
+          <li>AI 预填增加需求智能匹配 + 类型推断</li>
+          <li>保留语音输入、标题解析等现有能力</li>
+        </ul>
+      </td>
+      <td>2-3 天</td>
+    </tr>
+    <tr>
+      <td><span class="stamp stamp-new">Phase 5</span><br>搜索增强</td>
+      <td>全局搜索 + 关键结论加权 + 节点定位</td>
+      <td>
+        <ul>
+          <li>搜索范围扩展到 demands + archives（含 is_key_conclusion 加权）</li>
+          <li>结果展示面包屑路径 + 关键词高亮</li>
+          <li>点击搜索结果跳转到需求详情面板对应节点</li>
+        </ul>
+      </td>
+      <td>2 天</td>
+    </tr>
+  </table>
+  
+  <h3>10.2 优先级建议</h3>
+  <div class="highlight-box purple">
+    <strong>推荐顺序：Phase 1 → Phase 2 → Phase 4 → Phase 3 → Phase 5</strong>
+    <p style="margin-top:8px; margin-bottom:0;">
+      先打通数据层和看板视图（1+2），让需求全景管理立即可用；然后改造录入表单（4），确保新数据按需求维度录入；
+      再实现详情面板（3）和搜索增强（5），补全"结论溯源"和"信息检索"两个高频场景。
+      每个 Phase 可独立上线，渐进交付价值。
+    </p>
+  </div>
+
+  <h3>10.3 技术风险与应对</h3>
+  <table>
+    <tr>
+      <th>风险点</th>
+      <th>影响</th>
+      <th>应对方案</th>
+    </tr>
+    <tr>
+      <td>旧数据迁移遗漏</td>
+      <td>部分旧归档丢失关联</td>
+      <td>demand_id 可为空，未关联的旧数据在时间线视图照常展示；提供"拖入需求"的手动关联入口</td>
+    </tr>
+    <tr>
+      <td>看板拖拽性能</td>
+      <td>需求数多时卡顿</td>
+      <td>使用虚拟化列表 + 延迟加载已完成列；实测 50 个需求内性能充裕</td>
+    </tr>
+    <tr>
+      <td>AI 需求匹配准确率</td>
+      <td>自动关联错误的需求</td>
+      <td>AI 结果仅做推荐，用户可下拉修改；展示匹配置信度</td>
+    </tr>
+    <tr>
+      <td>搜索索引大小</td>
+      <td>数据量大时搜索变慢</td>
+      <td>现有 FTS5 + sqlite-vec 架构已验证可承载万级条目</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ═══════ 页脚 ═══════ -->
+<div style="text-align: center; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--gray-200);">
+  <div style="font-size: 13px; color: var(--gray-400);">
+    产品需求看板 — 策划文档 V1.0 &middot; 2026-09-03
+  </div>
+  <div style="font-size: 12px; color: var(--gray-300); margin-top: 4px;">
+    基于文件管理器 Demo 归档时间线功能重构
+  </div>
+</div>
+
+</div>
+</body>
+</html>

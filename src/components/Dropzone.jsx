@@ -12,10 +12,11 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
   const [isEdgeHovered, setIsEdgeHovered] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
-  
+
   const dropzoneRef = useRef(null);
   const panelRef = useRef(null);
   const closeTimerRef = useRef(null);
+
 
   // Fetch staging files from ~/.yuanbao_staging
   const fetchStagingFiles = async () => {
@@ -103,7 +104,7 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
         try {
           const data = e.dataTransfer.getData('application/json');
           if (data) file = JSON.parse(data);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!file && e.dataTransfer) {
         const textPath = e.dataTransfer.getData('text/plain');
@@ -348,7 +349,6 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
               fontSize: '10px',
               letterSpacing: '2px',
               userSelect: 'none',
-              transform: 'rotate(180deg)',
               marginTop: '2px',
               fontWeight: '600',
               display: isEdgeHovered || isPanelOpen ? 'block' : 'none',
@@ -483,7 +483,7 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
                       }
                       try {
                         e.dataTransfer.setData('application/json', JSON.stringify(file));
-                      } catch (_) {}
+                      } catch (_) { }
                     }}
                     onClick={(e) => toggleSelect(file.id, e)}
                     style={{
@@ -513,24 +513,24 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
                     }}
                   >
                     {/* 复选框 */}
-                    <div 
+                    <div
                       onClick={(e) => toggleSelect(file.id, e)}
-                      style={{ 
-                        width: '15px', 
-                        height: '15px', 
-                        borderRadius: '4px', 
-                        border: isSelected ? 'none' : '1px solid #cbd5e1', 
-                        background: isSelected ? '#00b96b' : '#fff', 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                      style={{
+                        width: '15px',
+                        height: '15px',
+                        borderRadius: '4px',
+                        border: isSelected ? 'none' : '1px solid #cbd5e1',
+                        background: isSelected ? '#00b96b' : '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
-                        flexShrink: 0 
+                        flexShrink: 0
                       }}
                     >
                       {isSelected && (
                         <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff">
-                          <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+                          <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
                         </svg>
                       )}
                     </div>
@@ -604,7 +604,7 @@ export default function Dropzone({ isGlobalDragging, draggedFile, workspacePath,
                   transition: 'all 0.15s ease',
                 }}
               >
-                导出至本地 {selectedStagedFiles.length > 0 ? `(${selectedStagedFiles.length})` : ''}
+                批量移动 {selectedStagedFiles.length > 0 ? `(${selectedStagedFiles.length})` : ''}
               </button>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button

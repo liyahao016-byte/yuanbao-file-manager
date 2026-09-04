@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 
-export default function PreviewerView({ file, onClose }) {
+export default function PreviewerView({ file, onClose, isSmartFolderContext = false }) {
   const [snippet, setSnippet] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,6 +22,7 @@ export default function PreviewerView({ file, onClose }) {
   const [ocrText, setOcrText] = useState("");
   const [ocrLoading, setOcrLoading] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
+  const ocrDrawerRef = useRef(null);
 
   // Cropping State
   const [isCropping, setIsCropping] = useState(false);
@@ -111,6 +112,8 @@ export default function PreviewerView({ file, onClose }) {
   const isImage = ['image', 'png', 'jpg', 'jpeg', 'gif', 'heic', 'heif', 'webp', 'svg', 'bmp', 'ico', 'psd', 'tiff', 'tif'].includes(fileExt) || (file?.type === 'image' || file?.file_type === 'image');
   const isVideo = ['video', 'mp4', 'mov', 'avi', 'mkv'].includes(fileExt);
   const isExcel = ['excel', 'xls', 'xlsx', 'csv'].includes(fileExt);
+  const isWord  = ['doc', 'docx'].includes(fileExt);
+  const isPdf   = fileExt === 'pdf';
 
   useEffect(() => {
     if (!file) return;
@@ -194,30 +197,38 @@ export default function PreviewerView({ file, onClose }) {
     }
   };
 
-  const [isSyncingDisk, setIsSyncingDisk] = useState(false);
-  const [syncStatusMsg, setSyncStatusMsg] = useState('');
 
-  const handleSyncToDisk = async () => {
-    if (!file?.id || !window.__TAURI_INTERNALS__) return;
-    setIsSyncingDisk(true);
-    setSyncStatusMsg('');
-    try {
-      const newPath = await invoke('sync_virtual_name_to_disk', { id: file.id });
-      setSyncStatusMsg('✅ 物理文件改名成功！');
-      file.path = newPath;
-      if (file.virtualName) {
-        file.name = file.virtualName;
-      }
-    } catch (err) {
-      console.error(err);
-      setSyncStatusMsg(`❌ 同步失败: ${err}`);
-    } finally {
-      setIsSyncingDisk(false);
+
+  // Auto-scroll OCR drawer into view when it opens (PDF / Excel)
+  useEffect(() => {
+    if (showOcrText && ocrDrawerRef.current) {
+      setTimeout(() => {
+        ocrDrawerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 80);
     }
-  };
+  }, [showOcrText]);
 
   const handleExtractOcr = () => {
-    if (ocrText) {
+    if (isExcel) {
+      // For Excel: derive text from loaded grid data, never from snippet
+      if (showOcrText) { setShowOcrText(false); return; }
+      if (excelData && excelData.sheets && excelData.sheets.length > 0) {
+        const lines = [];
+        excelData.sheets.forEach(sheet => {
+          lines.push(`=== ${sheet.name} ===`);
+          sheet.rows.forEach(row => lines.push(row.filter(c => c !== null && c !== undefined && c !== '').join('\t')));
+        });
+        setOcrText(lines.join('\n'));
+        setShowOcrText(true);
+      } else {
+        setOcrText('暂无可提取的表格文字');
+        setShowOcrText(true);
+      }
+      return;
+    }
+    if (ocrText || (!isImage && snippet)) {
+      // Already have content — just toggle visibility
+      if (!ocrText && snippet) setOcrText(snippet);
       setShowOcrText(!showOcrText);
       return;
     }
@@ -225,8 +236,8 @@ export default function PreviewerView({ file, onClose }) {
     setOcrLoading(true);
     setShowOcrText(true);
     invoke('read_document_snippet', { path: file.path })
-      .then(res => setOcrText(res || "未在图片中识别到文字"))
-      .catch(err => setOcrText(`[OCR错误] ${err}`))
+      .then(res => setOcrText(res || (isImage ? "未在图片中识别到文字" : "未提取到文本内容")))
+      .catch(err => setOcrText(`[提取错误] ${err}`))
       .finally(() => setOcrLoading(false));
   };
 
@@ -391,52 +402,6 @@ export default function PreviewerView({ file, onClose }) {
       {/* Content Area */}
       <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f8fafc' }}>
         
-        {/* Virtual Name vs Real File Name Banner */}
-        {file?.virtualName && (
-          <div style={{ 
-            width: '100%', 
-            marginBottom: '12px', 
-            padding: '12px 16px', 
-            background: '#f0fdf4', 
-            border: '1px solid #bbf7d0', 
-            borderRadius: '8px',
-            fontSize: '13px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', color: '#166534', fontWeight: '600', marginBottom: '4px' }}>
-              <span style={{ marginRight: '6px' }}>✨</span> 智能映射模式 (半映射半实际)
-            </div>
-            <div style={{ color: '#15803d', fontSize: '12px', marginBottom: '2px' }}>
-              <strong>虚拟显示名：</strong>{file.virtualName}
-            </div>
-            <div style={{ color: '#64748b', fontSize: '12px', wordBreak: 'break-all', marginBottom: '8px' }}>
-              <strong>磁盘真实文件：</strong>{file.name}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <button
-                onClick={handleSyncToDisk}
-                disabled={isSyncingDisk}
-                style={{
-                  padding: '4px 12px',
-                  background: '#16a34a',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  cursor: isSyncingDisk ? 'wait' : 'pointer',
-                  fontWeight: '500'
-                }}
-              >
-                {isSyncingDisk ? '同步中...' : '同步虚拟名到真实磁盘'}
-              </button>
-              {syncStatusMsg && (
-                <span style={{ fontSize: '12px', color: syncStatusMsg.includes('❌') ? '#dc2626' : '#166534' }}>
-                  {syncStatusMsg}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* 1. IMAGE PREVIEW WITH DARK FLOATING TOOLBAR & INTERACTIVE CROP */}
         {isImage ? (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -604,7 +569,7 @@ export default function PreviewerView({ file, onClose }) {
                   transition: 'all 0.2s'
                 }}
               >
-                ✨ {showOcrText ? '收起提词' : '提词'}
+                ✨ {showOcrText ? '收起' : '提取文字'}
               </button>
             </div>
 
@@ -711,7 +676,7 @@ export default function PreviewerView({ file, onClose }) {
               <div style={{ width: '100%', marginTop: '16px', background: '#fff', borderRadius: '8px', padding: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span>✨</span> Apple Vision OCR 提词结果:
+                    <span>✨</span> 提取文字结果:
                   </span>
                   {ocrText && !ocrLoading && (
                     <button 
@@ -826,6 +791,53 @@ export default function PreviewerView({ file, onClose }) {
                 </div>
               </div>
             ) : null}
+
+            {/* 提取文字 — Excel text extraction drawer (same OCR state) */}
+            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={handleExtractOcr}
+                style={{
+                  background: showOcrText ? '#e0e7ff' : '#f8fafc',
+                  border: '1px solid ' + (showOcrText ? '#a5b4fc' : '#e2e8f0'),
+                  color: showOcrText ? '#4f46e5' : '#475569',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ✨ {showOcrText ? '收起' : '提取文字'}
+              </button>
+            </div>
+            {showOcrText && (
+              <div ref={ocrDrawerRef} style={{ width: '100%', marginTop: '10px', background: '#fff', borderRadius: '8px', padding: '14px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>✨</span> 提取文字结果:
+                  </span>
+                  {ocrText && !ocrLoading && (
+                    <button
+                      onClick={handleCopyOcr}
+                      style={{ padding: '2px 8px', fontSize: '11px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: '#475569' }}
+                    >
+                      {copiedMsg ? '已复制！' : '复制全部'}
+                    </button>
+                  )}
+                </div>
+                {ocrLoading ? (
+                  <div style={{ fontSize: '13px', color: '#64748b' }}>正在提取表格文字内容...</div>
+                ) : (
+                  <div style={{ fontSize: '13px', color: '#334155', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                    {ocrText}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
         /* 3. VIDEO PREVIEW */
@@ -846,15 +858,55 @@ export default function PreviewerView({ file, onClose }) {
             border: '1px solid #e2e8f0',
             position: 'relative'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+            {/* File info header */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '14px' }}>
               <div style={{ width: '44px', height: '44px', background: '#eff6ff', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#3b82f6', fontSize: '22px' }}>📄</div>
-              <div style={{ marginLeft: '14px' }}>
+              <div style={{ marginLeft: '14px', flex: 1, minWidth: 0 }}>
                 <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b', wordBreak: 'break-all' }}>{file?.name}</h2>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{file?.size} • {file?.updatedAt}</div>
               </div>
             </div>
-            
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px', fontWeight: '500' }}>[文件内容摘要提取]</div>
+
+            {/* 提取文字 action row — hidden for Word (doc/docx) */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>文件内容摘要</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {snippet && !loading && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(snippet);
+                      setCopiedMsg(true);
+                      setTimeout(() => setCopiedMsg(false), 2000);
+                    }}
+                    style={{ padding: '3px 10px', fontSize: '11px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '5px', cursor: 'pointer', color: '#475569' }}
+                  >
+                    {copiedMsg ? '已复制！' : '复制全部'}
+                  </button>
+                )}
+                {/* Only show '提取文字' for PDF and other non-word formats */}
+                {!isWord && (
+                  <button
+                    onClick={handleExtractOcr}
+                    style={{
+                      background: showOcrText ? '#e0e7ff' : '#f8fafc',
+                      border: '1px solid ' + (showOcrText ? '#a5b4fc' : '#e2e8f0'),
+                      color: showOcrText ? '#4f46e5' : '#475569',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    ✨ {showOcrText ? '收起' : '提取文字'}
+                  </button>
+                )}
+              </div>
+            </div>
             
             {loading ? (
               <div style={{ color: '#64748b', fontSize: '13px' }}>正在极速剥离文本内容...</div>
@@ -865,12 +917,42 @@ export default function PreviewerView({ file, onClose }) {
                 lineHeight: '1.6', 
                 whiteSpace: 'pre-wrap', 
                 wordBreak: 'break-word',
-                fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto'
+                fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto',
+                background: '#f8fafc',
+                padding: '16px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0'
               }}>
                 {snippet}
                 {snippet?.length >= 500 && (
                   <div style={{ marginTop: '16px', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', textAlign: 'center' }} onClick={handleOpenNative}>
                     ...片段截断，点击使用外部程序查看完整排版
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 提取文字 OCR drawer — PDF/text only, with auto-scroll ref */}
+            {showOcrText && (
+              <div ref={ocrDrawerRef} style={{ marginTop: '16px', background: '#f8fafc', borderRadius: '8px', padding: '14px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>✨</span> 提取文字结果:
+                  </span>
+                  {ocrText && !ocrLoading && (
+                    <button
+                      onClick={handleCopyOcr}
+                      style={{ padding: '2px 8px', fontSize: '11px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: '#475569' }}
+                    >
+                      {copiedMsg ? '已复制！' : '复制全部'}
+                    </button>
+                  )}
+                </div>
+                {ocrLoading ? (
+                  <div style={{ fontSize: '13px', color: '#64748b' }}>正在提取文字内容...</div>
+                ) : (
+                  <div style={{ fontSize: '13px', color: '#334155', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto', background: '#fff', padding: '10px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                    {ocrText || snippet}
                   </div>
                 )}
               </div>

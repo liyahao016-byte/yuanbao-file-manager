@@ -112,24 +112,9 @@ export default function SearchResultsView({ query, category, onPreview, setIsGlo
     setIsLoading(true);
     if (window.__TAURI_INTERNALS__) {
       invoke('semantic_search', { query, filterCategory: category })
-        .then(async (res) => {
-          const fetchedResults = res || [];
-          setResults(fetchedResults);
+        .then((res) => {
+          setResults(res || []);
           setIsLoading(false);
-          
-          const resultsWithSnippets = [...fetchedResults];
-          for (let i = 0; i < resultsWithSnippets.length; i++) {
-             try {
-               const snippet = await invoke('read_document_snippet', { path: resultsWithSnippets[i].path });
-               if (snippet) {
-                 const cleanSnippet = snippet.replace(/\s+/g, ' ').substring(0, 30);
-                 resultsWithSnippets[i].snippet = cleanSnippet;
-                 setResults([...resultsWithSnippets]);
-               }
-             } catch (e) {
-               // Ignore error
-             }
-          }
         })
         .catch(err => {
           console.error(err);
@@ -443,9 +428,13 @@ export default function SearchResultsView({ query, category, onPreview, setIsGlo
                   <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: selectedFileIds[file.id] ? '600' : '400', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {file.name}
                   </span>
-                  <div style={{ fontSize: '11px', color: '#666', background: '#f9f9f9', display: 'inline-flex', padding: '2px 6px', borderRadius: '4px', border: '1px solid #eee', width: 'fit-content', marginTop: '2px' }}>
+                  <div style={{ fontSize: '11px', color: '#666', background: '#f9f9f9', display: 'inline-flex', padding: '2px 6px', borderRadius: '4px', border: '1px solid #eee', width: 'fit-content', marginTop: '2px', alignItems: 'center' }}>
                     <span style={{ color: '#009a52', fontWeight: '500', marginRight: '4px' }}>✨ 匹配线索：</span>
-                    <span>渠道：{getChannel(file.path)} ｜ 主题：{file.snippet ? `正文包含“${file.snippet}...”` : '命中向量语义'}</span>
+                    <span>
+                      {Array.isArray(file.snippet) && file.snippet.length > 0 
+                        ? file.snippet.join(" ｜ ") 
+                        : "符合搜索特征"}
+                    </span>
                   </div>
                 </div>
                 
@@ -490,9 +479,24 @@ export default function SearchResultsView({ query, category, onPreview, setIsGlo
         <SmartRenameModal 
           selectedFiles={selectedFiles} 
           onClose={() => setIsRenameModalOpen(false)}
-          onConfirm={() => {
+          onConfirm={async (previews) => {
+            if (window.__TAURI_INTERNALS__) {
+              try {
+                for (const p of previews) {
+                  await invoke('apply_virtual_rename', { id: p.id, newVirtualName: p.newName, new_virtual_name: p.newName, path: p.path });
+                  try {
+                    await invoke('sync_virtual_name_to_disk', { id: p.id });
+                  } catch(e) {
+                    console.error("Physical rename failed for", p.id, e);
+                  }
+                }
+              } catch (err) {
+                console.error("Rename failed", err);
+              }
+            }
             setIsRenameModalOpen(false);
             setSelectedFileIds({});
+            if (onSearch) onSearch(searchQuery); // Refresh search results
           }}
         />
       )}

@@ -78,26 +78,12 @@ export default function SmartSearchBox({ onSearch, activeSearchQuery }) {
       setIsSearching(true);
       const timer = setTimeout(() => {
         invoke('semantic_search', { query, filterCategory: category })
-          .then(async (res) => {
+          .then((res) => {
             const fetchedResults = res || [];
             // 只取前 10 个展示给用户
             const topResults = fetchedResults.slice(0, 10);
             setRealResults(topResults);
             setIsSearching(false);
-            
-            const resultsWithSnippets = [...topResults];
-            for (let i = 0; i < resultsWithSnippets.length; i++) {
-               try {
-                 const snippet = await invoke('read_document_snippet', { path: resultsWithSnippets[i].path });
-                 if (snippet) {
-                   const cleanSnippet = snippet.replace(/\s+/g, ' ').substring(0, 30);
-                   resultsWithSnippets[i].snippet = cleanSnippet;
-                   setRealResults([...resultsWithSnippets]);
-                 }
-               } catch (e) {
-                 // Ignore error
-               }
-            }
           })
           .catch(err => {
             console.error(err);
@@ -251,9 +237,15 @@ export default function SmartSearchBox({ onSearch, activeSearchQuery }) {
                         </div>
   
                         {/* 可解释性命中反馈 */}
-                        <div style={{ fontSize: '11px', color: '#666', background: '#f9f9f9', display: 'inline-flex', padding: '4px 8px', borderRadius: '4px', border: '1px solid #eee', marginBottom: '6px' }}>
-                          <span style={{ color: '#009a52', fontWeight: '500', marginRight: '4px' }}>✨ 匹配线索：</span>
-                          <span>渠道：{getChannel(item.path)} ｜ 主题：{item.snippet ? `正文包含“${item.snippet}...”` : '命中向量语义'}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                          <div style={{ fontSize: '11px', color: '#666', background: '#f9f9f9', display: 'inline-flex', padding: '2px 6px', borderRadius: '4px', border: '1px solid #eee', width: 'fit-content', marginTop: '2px', alignItems: 'center' }}>
+                            <span style={{ color: '#009a52', fontWeight: '500', marginRight: '4px' }}>✨ 匹配线索：</span>
+                            <span>
+                              {Array.isArray(item.snippet) && item.snippet.length > 0 
+                                ? item.snippet.join(" ｜ ") 
+                                : "符合搜索特征"}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>

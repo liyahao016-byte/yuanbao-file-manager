@@ -42,7 +42,10 @@ function MiniTabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onAddTab, onSw
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           let title = navNames[tab.currentNav] || scenarioMap[tab.currentNav] || tab.currentNav;
-          if (tab.currentNav.startsWith('cluster_')) {
+          const customNames = JSON.parse(localStorage.getItem('smart_cluster_custom_names') || '{}');
+          if (customNames[tab.currentNav]) {
+            title = customNames[tab.currentNav];
+          } else if (tab.currentNav.startsWith('cluster_')) {
             title = tab.currentNav.replace(/^cluster_/, '');
           }
           return (

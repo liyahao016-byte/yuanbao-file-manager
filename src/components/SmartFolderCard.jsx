@@ -7,7 +7,9 @@ export default function SmartFolderCard({
   isPinned,
   onPin,
   onDelete,
+  onRename,
   onFullView,
+  onArchive,
   onPreviewFile,
   isDraggable = true,
   onDragStart,
@@ -17,6 +19,8 @@ export default function SmartFolderCard({
   const [files, setFiles] = useState([]);
   const [totalCount, setTotalCount] = useState(cluster.count || 0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(cluster.name);
 
   useEffect(() => {
     setTotalCount(cluster.count || 0);
@@ -37,7 +41,7 @@ export default function SmartFolderCard({
         .then((res) => {
           if (isMounted && res) {
             setTotalCount(res.length);
-            setFiles(res.slice(0, 12)); // 方案 4: 精细双列微型条展示 Top 12 个项目
+            setFiles(res); // 集中展示全部项目，让外层 maxHeight 和 overflowY 接管滚动
           }
         })
         .catch(console.error)
@@ -148,30 +152,113 @@ export default function SmartFolderCard({
     >
       {/* Top Banner / Title & Action Controls */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1, minWidth: 0 }}>
-          <span style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {cluster.name}
-          </span>
-          <span style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            共 {totalCount} 个文件
-          </span>
-        </div>
+        {isEditing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+            <input
+              type="text"
+              value={editingTitle}
+              onChange={(e) => setEditingTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const trimmed = editingTitle.trim();
+                  if (trimmed && onRename) onRename(cluster.id, trimmed);
+                  setIsEditing(false);
+                }
+                if (e.key === 'Escape') setIsEditing(false);
+              }}
+              autoFocus
+              style={{
+                padding: '4px 8px', borderRadius: '6px', border: '1.5px solid var(--tag-green)',
+                fontSize: '13px', fontWeight: '700', color: '#0f172a', width: '100%', outline: 'none',
+                background: '#ffffff'
+              }}
+            />
+            <button
+              onClick={() => {
+                const trimmed = editingTitle.trim();
+                if (trimmed && onRename) onRename(cluster.id, trimmed);
+                setIsEditing(false);
+              }}
+              title="保存修改"
+              style={{
+                padding: '4px 8px', borderRadius: '6px', border: 'none', background: 'var(--tag-green)',
+                color: '#ffffff', fontSize: '11px', fontWeight: '700', cursor: 'pointer', flexShrink: 0
+              }}
+            >
+              ✓
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              title="取消"
+              style={{
+                padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff',
+                color: '#64748b', fontSize: '11px', fontWeight: '600', cursor: 'pointer', flexShrink: 0
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden', flex: 1, minWidth: 0 }}>
+            <span
+              onClick={() => { setEditingTitle(cluster.name); setIsEditing(true); }}
+              title={cluster.name}
+              style={{ fontWeight: '700', fontSize: '14px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+            >
+              {cluster.name}
+            </span>
+            <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>
+              共 {totalCount} 个文件
+            </span>
+          </div>
+        )}
 
-        {/* Action Controls Group */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        {/* Action Controls Group (Shrunk buttons and gap to maximize title space) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
           {isDraggable && (
             <>
-              {/* 1. 📌 钉住按钮 */}
+              {/* 1. 简约编辑图标按钮 */}
+              <button
+                onClick={() => { setEditingTitle(cluster.name); setIsEditing(true); }}
+                title="修改聚类名称"
+                style={{
+                  background: '#f1f5f9',
+                  border: '1px solid transparent',
+                  borderRadius: '6px',
+                  padding: '3px 5px',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)';
+                  e.currentTarget.style.color = '#6366f1';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#f1f5f9';
+                  e.currentTarget.style.color = '#64748b';
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+
+              {/* 2. 📌 钉住按钮 */}
               <button
                 onClick={() => onPin(cluster.id)}
                 title={isPinned ? '取消置顶' : '📌 置顶钉住'}
                 style={{
                   background: isPinned ? 'rgba(0, 185, 107, 0.15)' : '#f1f5f9',
                   border: isPinned ? '1px solid rgba(0, 185, 107, 0.3)' : '1px solid transparent',
-                  borderRadius: '8px',
-                  padding: '5px 9px',
+                  borderRadius: '6px',
+                  padding: '3px 5px',
                   cursor: 'pointer',
-                  fontSize: '13px',
+                  fontSize: '11px',
                   color: isPinned ? 'var(--tag-green)' : '#64748b',
                   display: 'flex',
                   alignItems: 'center',
@@ -194,17 +281,16 @@ export default function SmartFolderCard({
                 📌
               </button>
 
-              {/* 2. 🗑️ 加粗垃圾桶按钮 */}
+              {/* 3. 🗑️ 加粗垃圾桶按钮 */}
               <button
                 onClick={() => onDelete(cluster.id)}
                 title="解散/删除此卡片簇"
                 style={{
                   background: '#f1f5f9',
                   border: '1px solid transparent',
-                  borderRadius: '8px',
-                  padding: '5px 9px',
+                  borderRadius: '6px',
+                  padding: '3px 5px',
                   cursor: 'pointer',
-                  fontSize: '13px',
                   color: '#64748b',
                   display: 'flex',
                   alignItems: 'center',
@@ -222,28 +308,65 @@ export default function SmartFolderCard({
                   e.currentTarget.style.borderColor = 'transparent';
                 }}
               >
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ stroke: 'currentColor', strokeWidth: 0.5 }}>
-                  <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style={{ stroke: 'currentColor', strokeWidth: 0.5 }}>
+                  <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                 </svg>
               </button>
             </>
           )}
 
-          {/* 3. 全视图 ➔ 按钮 */}
+          {/* 4. 📋 归档本簇按钮 */}
+          {isDraggable && onArchive && (
+            <button
+              onClick={() => onArchive(cluster.id, cluster.name, files)}
+              title="归档本簇"
+              style={{
+                background: 'rgba(0, 185, 107, 0.06)',
+                border: '1px solid rgba(0, 185, 107, 0.2)',
+                borderRadius: '6px',
+                padding: '3px 5px',
+                cursor: 'pointer',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(0, 185, 107, 0.15)';
+                e.currentTarget.style.color = 'var(--tag-green)';
+                e.currentTarget.style.borderColor = 'rgba(0, 185, 107, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(0, 185, 107, 0.06)';
+                e.currentTarget.style.color = '#64748b';
+                e.currentTarget.style.borderColor = 'rgba(0, 185, 107, 0.2)';
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </button>
+          )}
+
+          {/* 5. 全视图 ➔ 按钮 */}
           <button
             onClick={() => onFullView(cluster.id)}
             style={{
               background: 'rgba(0, 185, 107, 0.1)',
               color: 'var(--tag-green)',
               border: '1px solid rgba(0, 185, 107, 0.25)',
-              borderRadius: '8px',
-              padding: '5px 12px',
-              fontSize: '12px',
+              borderRadius: '6px',
+              padding: '3px 8px',
+              fontSize: '11px',
               fontWeight: '600',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: '2px',
               transition: 'all 0.15s ease',
             }}
             onMouseEnter={(e) => {

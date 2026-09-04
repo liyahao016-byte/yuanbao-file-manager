@@ -1,10 +1,12 @@
 mod db;
 mod ollama;
+mod archive;
+mod asset;
+mod file_parser;
 
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
-mod file_parser;
 use chrono::{DateTime, Local};
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -40,8 +42,8 @@ fn format_file_size(bytes: u64) -> String {
     }
 }
 
-struct AppState {
-    db: Mutex<Connection>,
+pub(crate) struct AppState {
+    pub(crate) db: Mutex<Connection>,
 }
 
 #[derive(Serialize)]
@@ -111,6 +113,7 @@ struct FileItem {
     virtual_name: Option<String>,
     #[serde(rename = "smartGroup")]
     smart_group: Option<String>,
+    snippet: Option<Vec<String>>,
 }
 
 use walkdir::WalkDir;
@@ -162,6 +165,7 @@ async fn get_files(dir_path: Option<String>, state: State<'_, AppState>) -> Resu
                     tags,
                     smart_group: row.get(9)?,
                     category: "recent".to_string(),
+                    snippet: None,
                 })
             });
             
@@ -317,6 +321,7 @@ async fn get_files(dir_path: Option<String>, state: State<'_, AppState>) -> Resu
                 tags,
                 smart_group: row.get(9)?,
                 category: "desktop".to_string(), // Frontend logic can override this
+                snippet: None,
             })
         });
         
@@ -448,6 +453,8 @@ async fn get_smart_folder_stats(state: tauri::State<'_, AppState>) -> Result<Vec
     scenario_counts.insert("study", (0, "smart_scenario_study", "学习备考"));
     scenario_counts.insert("media", (0, "smart_scenario_media", "影音媒体"));
     scenario_counts.insert("code", (0, "smart_scenario_code", "代码工程"));
+    scenario_counts.insert("archive", (0, "smart_scenario_archive", "归档记录"));
+    scenario_counts.insert("daily", (0, "smart_scenario_daily", "日记时间线"));
 
     if let Ok(conn) = state.db.lock() {
         if let Ok(mut stmt) = conn.prepare("SELECT id, name, path FROM files") {
@@ -504,6 +511,21 @@ async fn get_smart_folder_stats(state: tauri::State<'_, AppState>) -> Result<Vec
                     }
                     if lower_name.contains("源码") || lower_name.contains("脚本") || lower_name.contains("api") || ext == "rs" || ext == "js" || ext == "py" {
                         scenario_counts.get_mut("code").unwrap().0 += 1;
+                    }
+
+                    // Archive/Daily detection: path contains "30-daily" or filename matches YYYY-MM-DD pattern
+                    let path_lower = r.0.to_lowercase();
+                    if path_lower.contains("30-daily") || {
+                        // Check if filename matches YYYY-MM-DD.md pattern
+                        let fname = lower_name.as_str();
+                        fname.len() >= 10 && fname.as_bytes().get(4) == Some(&b'-') && fname.as_bytes().get(7) == Some(&b'-') && ext == "md"
+                    } {
+                        scenario_counts.get_mut("daily").unwrap().0 += 1;
+                    }
+                    // Archive content detection: md files containing "### ✅" patterns
+                    if ext == "md" && path_lower.contains("30-daily") {
+                        // Mark as potential archive (actual content check deferred to avoid IO here)
+                        scenario_counts.get_mut("archive").unwrap().0 += 1;
                     }
 
                     files.push((r.0, r.1));
@@ -681,6 +703,14 @@ async fn get_files_by_cluster(
                 "name LIKE '%源码%' OR name LIKE '%脚本%' OR lower(name) LIKE '%api%' OR lower(name) LIKE '%.rs' OR lower(name) LIKE '%.py'".to_string(),
                 None
             ),
+            "smart_scenario_archive" | "归档记录" => (
+                "lower(path) LIKE '%30-daily%' AND lower(name) LIKE '%.md'".to_string(),
+                None
+            ),
+            "smart_scenario_daily" | "日记时间线" => (
+                "(lower(path) LIKE '%30-daily%' OR (lower(name) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND lower(name) LIKE '%.md'))".to_string(),
+                None
+            ),
             _ => {
                 let clean_theme = theme
                     .replace("cluster_custom_", "")
@@ -715,6 +745,7 @@ async fn get_files_by_cluster(
                     tags,
                     smart_group: row.get(9).unwrap_or_default(),
                     category: format!("cluster_{}", theme),
+                    snippet: None,
                 })
             };
 
@@ -858,175 +889,164 @@ async fn sync_all_embeddings(state: State<'_, AppState>) -> Result<usize, String
     Ok(count)
 }
 
-#[tauri::command]
-async fn semantic_search(query: String, filter_category: Option<String>, state: State<'_, AppState>) -> Result<Vec<FileItem>, String> {
-    // 1. Prepare FTS5 keyword query
-    let fts_query = query.replace("\"", "\"\"");
-    let fts_query_quoted = format!("\"{}\"", fts_query); // Exact phrase
+fn compute_matching_snippet(
+    name: &str,
+    path: &str,
+    file_type: &str,
+    ai_suggestion: Option<&str>,
+    tags_str: Option<&str>,
+    virtual_name: Option<&str>,
+    intent: &ollama::ParsedIntent,
+    can_sniff: bool,
+) -> Option<Vec<String>> {
+    let mut clues = Vec::new();
+    let query_lower = intent.raw_query.to_lowercase();
+    
+    if !query_lower.is_empty() && name.to_lowercase().contains(&query_lower) {
+        clues.push(format!("文件名完全匹配：“{}”", intent.raw_query));
+    }
 
-    let mut fts_results: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
-    let mut vec_results: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+    let mut semantic_matched = false;
+    if let Some(ref cat) = intent.topic_category {
+        clues.push(format!("命中语义主题：“{}”", cat));
+        semantic_matched = true;
+    }
 
-    // 2. FTS5 Search (Full-Text)
-    {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        
-        let fts_sql = "
-            SELECT f.id, fts.rank 
-            FROM files_fts fts
-            JOIN files f ON fts.rowid = f.rowid
-            WHERE files_fts MATCH ?1
-            ORDER BY rank
-            LIMIT 50
-        ";
-        
-        let mut fallback = false;
-        if let Ok(mut stmt) = conn.prepare(fts_sql) {
-            let mut succeeded = false;
-            if let Ok(mut rows) = stmt.query([&fts_query_quoted]) {
-                let mut current_rank = 1.0;
-                while let Ok(Some(row)) = rows.next() {
-                    let id: String = row.get(0).unwrap_or_default();
-                    fts_results.insert(id, current_rank);
-                    current_rank += 1.0;
-                    succeeded = true;
-                }
-            }
-            if !succeeded {
-                fallback = true;
+    if let Some(ref src) = intent.source_path_keyword {
+        let display_src = match src.as_str() {
+            "wechat" => "微信",
+            "qq" => "QQ",
+            "download" => "下载",
+            "desktop" => "桌面",
+            _ => src
+        };
+        let p = path.to_lowercase();
+        let matches_src = match src.as_str() {
+            "wechat" => p.contains("wechat") || p.contains("微信"),
+            "qq" => p.contains("qq") || p.contains("tencent files"),
+            "download" => p.contains("download") || p.contains("下载"),
+            "desktop" => p.contains("desktop") || p.contains("桌面"),
+            _ => p.contains(src)
+        };
+        if matches_src {
+            clues.push(format!("命中渠道要求：“{}”", display_src));
+        }
+    }
+
+    if !intent.file_types.is_empty() {
+        let ft_lower = file_type.to_lowercase();
+        let n_lower = name.to_lowercase();
+        if intent.file_types.iter().any(|t| ft_lower.contains(t) || n_lower.ends_with(t)) {
+            clues.push(format!("命中格式要求：“{}”", intent.file_types.join(",")));
+        }
+    }
+
+    let mut content_matched = false;
+    for token in &intent.search_tokens {
+        let token_lower = token.to_lowercase();
+        if token_lower.trim().is_empty() {
+            continue;
+        }
+
+        if !clues.iter().any(|c| c.starts_with("文件名完全匹配")) && name.to_lowercase().contains(&token_lower) {
+            clues.push(format!("文件名包含“{}”", token));
+        }
+
+        if let Some(vname) = virtual_name {
+            if vname.to_lowercase().contains(&token_lower) {
+                clues.push(format!("AI提取主题包含“{}”", token));
             }
         }
-        
-        if fallback {
-            if let Ok(mut stmt) = conn.prepare(fts_sql) {
-                if let Ok(mut rows) = stmt.query([&query]) {
-                    let mut current_rank = 1.0;
-                    while let Ok(Some(row)) = rows.next() {
-                        let id: String = row.get(0).unwrap_or_default();
-                        fts_results.insert(id, current_rank);
-                        current_rank += 1.0;
-                    }
+
+        if let Some(tags) = tags_str {
+            if tags.to_lowercase().contains(&token_lower) {
+                clues.push(format!("标签包含“{}”", token));
+            }
+        }
+
+        let mut snippet_found = false;
+        if clues.len() < 3 {
+            if let Some(snippet) = ai_suggestion {
+                let snippet_lower = snippet.to_lowercase();
+                if let Some(pos) = snippet_lower.find(&token_lower) {
+                    let match_char_idx = snippet[..pos].chars().count();
+                    let start_char_idx = match_char_idx.saturating_sub(15);
+                    let end_char_idx = (match_char_idx + token.chars().count() + 15).min(snippet.chars().count());
+
+                    let sub: String = snippet.chars().skip(start_char_idx).take(end_char_idx - start_char_idx).collect();
+                    let cleaned_sub = sub.replace('\n', " ").replace('\r', "");
+                    clues.push(format!("正文包含：“...{}...”", cleaned_sub.trim()));
+                    content_matched = true;
+                    snippet_found = true;
+                }
+            }
+        }
+
+        // Real-time sniffing fallback
+        if clues.len() < 3 && !snippet_found && can_sniff {
+            if let Ok(real_text) = file_parser::read_text_snippet(path, 1000) {
+                let snippet_lower = real_text.to_lowercase();
+                if let Some(pos) = snippet_lower.find(&token_lower) {
+                    let match_char_idx = real_text[..pos].chars().count();
+                    let start_char_idx = match_char_idx.saturating_sub(15);
+                    let end_char_idx = (match_char_idx + token.chars().count() + 15).min(real_text.chars().count());
+
+                    let sub: String = real_text.chars().skip(start_char_idx).take(end_char_idx - start_char_idx).collect();
+                    let cleaned_sub = sub.replace('\n', " ").replace('\r', "");
+                    clues.push(format!("正文包含：“...{}...”", cleaned_sub.trim()));
+                    content_matched = true;
                 }
             }
         }
     }
 
-    // 3. Vector Search (Semantic)
-    if let Ok(query_embedding) = ollama::generate_embedding(&query).await {
-        let query_bytes: &[u8] = bytemuck::cast_slice(&query_embedding);
+    if semantic_matched && !content_matched {
+        if let Some(snippet) = ai_suggestion {
+            let cleaned = snippet.replace('\n', " ").replace('\r', "");
+            let truncated: String = cleaned.chars().take(40).collect();
+            clues.push(format!("核心内容：“{}...”", truncated));
+        }
+    }
+
+    if clues.is_empty() {
+        Some(vec!["基于 AI 语义与正文检索".to_string()])
+    } else {
+        let mut unique_clues = Vec::new();
+        for clue in clues {
+            if !unique_clues.contains(&clue) {
+                unique_clues.push(clue);
+            }
+            if unique_clues.len() >= 3 {
+                break;
+            }
+        }
+        Some(unique_clues)
+    }
+}
+
+async fn do_hybrid_search(
+    query: &str,
+    filter_category: Option<String>,
+    state: &AppState,
+) -> Vec<FileItem> {
+    let intent = ollama::parse_nl_intent(query);
+    if intent.raw_query.is_empty() {
+        return Vec::new();
+    }
+
+    // 1. 如果用户查询包含显式日期 (如 "8月22日的文件" -> "2026-08-22")，直接按操作时间(updated_at)精确检索
+    if let Some(ref date_str) = intent.date_target {
         if let Ok(conn) = state.db.lock() {
-            let vec_sql = "
-                SELECT f.id, v.distance 
-                FROM vec_files v
-                JOIN files f ON v.file_id = f.id
-                WHERE v.embedding MATCH ?1 AND k = 50
-            ";
-            if let Ok(mut stmt) = conn.prepare(vec_sql) {
-                if let Ok(mut rows) = stmt.query([query_bytes]) {
-                    let mut current_rank = 1.0;
-                    while let Ok(Some(row)) = rows.next() {
-                        let id: String = row.get(0).unwrap_or_default();
-                        vec_results.insert(id, current_rank);
-                        current_rank += 1.0;
-                    }
-                }
-            }
-        }
-    }
-
-    // 4. Reciprocal Rank Fusion (RRF) Merge
-    let k = 60.0;
-    let mut combined_scores: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
-
-    let mut all_ids = std::collections::HashSet::new();
-    for id in fts_results.keys() { all_ids.insert(id.clone()); }
-    for id in vec_results.keys() { all_ids.insert(id.clone()); }
-
-    for id in all_ids {
-        let mut score = 0.0;
-        if let Some(rank) = fts_results.get(&id) {
-            score += 1.0 / (k + rank);
-        }
-        if let Some(rank) = vec_results.get(&id) {
-            score += 1.0 / (k + rank);
-        }
-        combined_scores.insert(id, score);
-    }
-
-    // 5. Fetch File Items and Boost
-    let mut result = Vec::new();
-    if !combined_scores.is_empty() {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        
-        let ids: Vec<String> = combined_scores.keys().cloned().collect();
-        let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let mut sql = format!("
-            SELECT id, name, file_type, size, updated_at, path, ai_suggestion, virtual_name, tags, smart_group
-            FROM files
-            WHERE id IN ({})
-        ", placeholders);
-
-        if let Some(ref cat) = filter_category {
-            match cat.as_str() {
-                "文档" => sql.push_str(" AND file_type IN ('word', 'pdf')"),
-                "图片" => sql.push_str(" AND file_type = 'image'"),
-                "视频" => sql.push_str(" AND file_type = 'video'"),
-                _ => {} // "全部"
-            }
-        }
-
-        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let params = rusqlite::params_from_iter(ids.iter());
-        
-        let rows = stmt.query_map(params, |row| {
-            let id: String = row.get(0)?;
-            let name: String = row.get(1)?;
-            let tags_str: Option<String> = row.get(8)?;
-            let tags = if let Some(s) = tags_str {
-                if s.is_empty() { vec![] } else { s.split(',').map(|x| x.to_string()).collect() }
-            } else {
-                vec![]
-            };
-
-            let mut final_score = *combined_scores.get(&id).unwrap_or(&0.0);
-            
-            // Boost factor: Title match
-            if name.to_lowercase().contains(&query.to_lowercase()) {
-                final_score += 0.5; // Significant boost
-            }
-
-            Ok((final_score, FileItem {
-                id,
-                name,
-                file_type: row.get(2)?,
-                size: row.get(3)?,
-                updated_at: row.get(4)?,
-                path: row.get(5)?,
-                ai_suggestion: row.get(6)?,
-                virtual_name: row.get(7)?,
-                tags,
-                smart_group: row.get(9)?,
-                category: "search_result".to_string(),
-            }))
-        }).map_err(|e| e.to_string())?;
-
-        let mut scored_items: Vec<(f32, FileItem)> = rows.flatten().collect();
-        scored_items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-
-        result = scored_items.into_iter().take(200).map(|(_, item)| item).collect();
-    }
-
-    // 6. Direct SQL LIKE Fallback if FTS5 & Vector yield no results
-    if result.is_empty() {
-        if let Ok(conn) = state.db.lock() {
-            let param = format!("%{}%", query.trim().to_lowercase());
             let mut sql = String::from("
                 SELECT id, name, file_type, size, updated_at, path, ai_suggestion, virtual_name, tags, smart_group
                 FROM files
-                WHERE (lower(name) LIKE ?1 OR lower(path) LIKE ?1 OR lower(ai_suggestion) LIKE ?1)
+                WHERE updated_at LIKE ?1
             ");
 
-            if let Some(cat) = &filter_category {
+            if !intent.file_types.is_empty() {
+                let types_in = intent.file_types.iter().map(|t| format!("'{}'", t)).collect::<Vec<_>>().join(",");
+                sql.push_str(&format!(" AND lower(file_type) IN ({})", types_in));
+            } else if let Some(ref cat) = filter_category {
                 match cat.as_str() {
                     "文档" => sql.push_str(" AND file_type IN ('word', 'pdf')"),
                     "图片" => sql.push_str(" AND file_type = 'image'"),
@@ -1035,16 +1055,19 @@ async fn semantic_search(query: String, filter_category: Option<String>, state: 
                 }
             }
 
-            sql.push_str(" LIMIT 200");
+            if let Some(ref src) = intent.source_path_keyword {
+                sql.push_str(&format!(" AND (lower(path) LIKE '%{}%' OR lower(path) LIKE '%微信%' OR lower(path) LIKE '%wechat%')", src));
+            }
 
+            sql.push_str(" ORDER BY updated_at DESC LIMIT 500");
+
+            let date_pattern = format!("{}%", date_str);
             if let Ok(mut stmt) = conn.prepare(&sql) {
-                if let Ok(rows) = stmt.query_map([&param], |row| {
+                if let Ok(rows) = stmt.query_map([&date_pattern], |row| {
                     let tags_str: Option<String> = row.get(8)?;
                     let tags = if let Some(s) = tags_str {
                         if s.is_empty() { vec![] } else { s.split(',').map(|x| x.to_string()).collect() }
-                    } else {
-                        vec![]
-                    };
+                    } else { vec![] };
 
                     Ok(FileItem {
                         id: row.get(0)?,
@@ -1058,16 +1081,274 @@ async fn semantic_search(query: String, filter_category: Option<String>, state: 
                         tags,
                         smart_group: row.get(9)?,
                         category: "search_result".to_string(),
+                        snippet: Some(vec![format!("操作时间为 {}", date_str)]),
                     })
                 }) {
-                    result = rows.flatten().collect();
+                    let results: Vec<FileItem> = rows.flatten().filter(|f| !is_blacklisted_path(&f.path)).collect();
+                    if !results.is_empty() {
+                        return results;
+                    }
                 }
             }
         }
     }
 
-    Ok(result)
+    // 2. 常规多维属性混合搜索
+    execute_multi_attribute_search(&intent, filter_category.as_deref(), state).await
 }
+
+
+async fn execute_multi_attribute_search(
+    intent: &ollama::ParsedIntent,
+    filter_category: Option<&str>,
+    state: &AppState,
+) -> Vec<FileItem> {
+    let search_tokens = &intent.search_tokens;
+    let query_clean = intent.raw_query.to_lowercase();
+
+    let mut fts_results: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+    let mut vec_results: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+
+    // 1. FTS5 Search & LIKE Fallback for short tokens
+    if let Ok(conn) = state.db.lock() {
+        let fts_sql = "
+            SELECT f.id, fts.rank 
+            FROM files_fts fts
+            JOIN files f ON fts.rowid = f.rowid
+            WHERE files_fts MATCH ?1
+            ORDER BY rank
+            LIMIT 500
+        ";
+        for token in search_tokens {
+            let char_count = token.chars().count();
+            if char_count >= 3 {
+                let escaped = token.replace("\"", "\"\"");
+                let fts_query = format!("\"{}\"", escaped);
+                if let Ok(mut stmt) = conn.prepare(fts_sql) {
+                    if let Ok(mut rows) = stmt.query([&fts_query]) {
+                        let mut current_rank = 1.0;
+                        while let Ok(Some(row)) = rows.next() {
+                            if let Ok(id) = row.get::<_, String>(0) {
+                                let entry = fts_results.entry(id).or_insert(current_rank);
+                                if *entry > current_rank {
+                                    *entry = current_rank;
+                                }
+                                current_rank += 1.0;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Short token fallback: trigram misses tokens < 3 characters (e.g. 2-character Chinese)
+                let param = format!("%{}%", token.to_lowercase());
+                let mut sql = String::from("
+                    SELECT id
+                    FROM files
+                    WHERE (lower(name) LIKE ?1 OR lower(path) LIKE ?1 OR lower(COALESCE(ai_suggestion, '')) LIKE ?1 OR lower(COALESCE(tags, '')) LIKE ?1 OR lower(COALESCE(content_snippet, '')) LIKE ?1)
+                ");
+                if !intent.file_types.is_empty() {
+                    let types_in = intent.file_types.iter().map(|t| format!("'{}'", t)).collect::<Vec<_>>().join(",");
+                    sql.push_str(&format!(" AND (lower(file_type) IN ({}) OR lower(name) LIKE '%.docx' OR lower(name) LIKE '%.pdf' OR lower(name) LIKE '%.xlsx' OR lower(name) LIKE '%.pptx')", types_in));
+                }
+                sql.push_str(" LIMIT 500");
+                
+                if let Ok(mut stmt) = conn.prepare(&sql) {
+                    if let Ok(mut rows) = stmt.query([&param]) {
+                        let mut current_rank = 1.0;
+                        while let Ok(Some(row)) = rows.next() {
+                            if let Ok(id) = row.get::<_, String>(0) {
+                                let entry = fts_results.entry(id).or_insert(current_rank);
+                                if *entry > current_rank {
+                                    *entry = current_rank;
+                                }
+                                current_rank += 1.0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Vector Search
+    let embed_input = search_tokens.join(" ");
+    if let Ok(query_embedding) = ollama::generate_embedding(&embed_input).await {
+        let query_bytes: &[u8] = bytemuck::cast_slice(&query_embedding);
+        if let Ok(conn) = state.db.lock() {
+            let vec_sql = "
+                SELECT f.id, v.distance 
+                FROM vec_files v
+                JOIN files f ON v.file_id = f.id
+                WHERE v.embedding MATCH ?1 AND k = 200
+            ";
+            if let Ok(mut stmt) = conn.prepare(vec_sql) {
+                if let Ok(mut rows) = stmt.query([query_bytes]) {
+                    let mut current_rank = 1.0;
+                    while let Ok(Some(row)) = rows.next() {
+                        let distance: f32 = row.get(1).unwrap_or(1.0);
+                        if distance > 0.75 {
+                            continue;
+                        }
+                        if let Ok(id) = row.get(0) {
+                            vec_results.insert(id, current_rank);
+                            current_rank += 1.0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. RRF Merge
+    let k = 60.0;
+    let mut combined_scores: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+    let mut all_ids = std::collections::HashSet::new();
+    for id in fts_results.keys() { all_ids.insert(id.clone()); }
+    for id in vec_results.keys() { all_ids.insert(id.clone()); }
+
+    for id in &all_ids {
+        let mut score = 0.0;
+        if let Some(rank) = fts_results.get(id) { score += 1.0 / (k + rank); }
+        if let Some(rank) = vec_results.get(id) { score += 1.0 / (k + rank); }
+        combined_scores.insert(id.clone(), score);
+    }
+
+    // 4. Fetch items and apply strict relevance filtering
+    let mut result = Vec::new();
+    if !combined_scores.is_empty() {
+        if let Ok(conn) = state.db.lock() {
+            let ids: Vec<String> = combined_scores.keys().cloned().collect();
+            let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let mut sql = format!("
+                SELECT id, name, file_type, size, updated_at, path, ai_suggestion, virtual_name, tags, smart_group
+                FROM files
+                WHERE id IN ({})
+            ", placeholders);
+
+            if let Some(cat) = filter_category {
+                match cat {
+                    "文档" => sql.push_str(" AND file_type IN ('word', 'pdf')"),
+                    "图片" => sql.push_str(" AND file_type = 'image'"),
+                    "视频" => sql.push_str(" AND file_type = 'video'"),
+                    _ => {}
+                }
+            }
+
+            if let Some(ref source_kw) = intent.source_path_keyword {
+                sql.push_str(&format!(" AND (lower(path) LIKE '%{}%' OR lower(path) LIKE '%微信%' OR lower(path) LIKE '%wechat%')", source_kw));
+            }
+
+            if !intent.file_types.is_empty() {
+                let types_in = intent.file_types.iter().map(|t| format!("'{}'", t)).collect::<Vec<_>>().join(",");
+                sql.push_str(&format!(" AND (lower(file_type) IN ({}) OR lower(name) LIKE '%.docx' OR lower(name) LIKE '%.pdf' OR lower(name) LIKE '%.xlsx' OR lower(name) LIKE '%.pptx')", types_in));
+            }
+
+            if let Ok(mut stmt) = conn.prepare(&sql) {
+                let params = rusqlite::params_from_iter(ids.iter());
+                if let Ok(rows) = stmt.query_map(params, |row| {
+                    let id: String = row.get(0)?;
+                    let name: String = row.get(1)?;
+                    let file_type: String = row.get(2)?;
+                    let size: String = row.get(3)?;
+                    let updated_at: String = row.get(4)?;
+                    let path: String = row.get(5)?;
+                    let ai_suggestion: Option<String> = row.get(6)?;
+                    let virtual_name: Option<String> = row.get(7)?;
+                    let tags_str: Option<String> = row.get(8)?;
+                    let smart_group: Option<String> = row.get(9)?;
+
+                    let tags = if let Some(ref s) = tags_str {
+                        if s.is_empty() { vec![] } else { s.split(',').map(|x| x.to_string()).collect() }
+                    } else { vec![] };
+
+                    let mut final_score = *combined_scores.get(&id).unwrap_or(&0.0);
+                    
+                    let mut exact_match = false;
+                    let mut path_only = false;
+                    for t in &intent.search_tokens {
+                        let tl = t.to_lowercase();
+                        if name.to_lowercase().contains(&tl) || ai_suggestion.as_deref().unwrap_or("").to_lowercase().contains(&tl) || tags_str.as_deref().unwrap_or("").to_lowercase().contains(&tl) {
+                            exact_match = true;
+                        } else if path.to_lowercase().contains(&tl) {
+                            path_only = true;
+                        }
+                    }
+                    
+                    if exact_match {
+                        final_score += 0.5;
+                    } else if path_only && fts_results.contains_key(&id) {
+                        // Penalize if FTS matched but it was only in the path
+                        final_score -= 1.0; 
+                    }
+                    
+                    // Product Heuristic Boosting
+                    if let Some(ref cat) = intent.topic_category {
+                        if cat == "简历" || cat == "合同" || cat == "报告" || cat == "发票" {
+                            if file_type == "word" || file_type == "pdf" {
+                                final_score += 0.5;
+                            } else if file_type == "image" || file_type == "video" || file_type == "excel" {
+                                final_score -= 0.5;
+                            }
+                        }
+                    }
+
+                    Ok(Some((final_score, FileItem {
+                        id,
+                        name,
+                        file_type,
+                        size,
+                        updated_at,
+                        path,
+                        ai_suggestion,
+                        virtual_name,
+                        tags,
+                        smart_group,
+                        category: "search_result".to_string(),
+                        snippet: None, // Filled after sorting
+                    })))
+                }) {
+                    let mut scored_items: Vec<(f32, FileItem)> = rows
+                        .flatten()
+                        .filter_map(|opt| opt)
+                        .collect();
+                    scored_items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                    
+                    let mut final_items = Vec::new();
+                    for (idx, (_, mut item)) in scored_items.into_iter().take(200).enumerate() {
+                        let ai_sug_clone = item.ai_suggestion.clone();
+                        let tags_str = item.tags.join(",");
+                        let tags_opt = if tags_str.is_empty() { None } else { Some(tags_str.as_str()) };
+                        let v_name_clone = item.virtual_name.clone();
+                        
+                        item.snippet = compute_matching_snippet(
+                            &item.name,
+                            &item.path,
+                            &item.file_type,
+                            ai_sug_clone.as_deref(),
+                            tags_opt,
+                            v_name_clone.as_deref(),
+                            intent,
+                            idx < 20 // Only sniff real content for top 20 items to avoid latency
+                        );
+                        if item.snippet.is_some() {
+                            final_items.push(item);
+                        }
+                    }
+                    result = final_items;
+                }
+            }
+        }
+    }
+
+    // Noise path filtering
+    result.into_iter().filter(|f| !is_blacklisted_path(&f.path)).collect()
+}
+
+#[tauri::command]
+async fn semantic_search(query: String, filter_category: Option<String>, state: State<'_, AppState>) -> Result<Vec<FileItem>, String> {
+    Ok(do_hybrid_search(&query, filter_category, &state).await)
+}
+
 
 #[tauri::command]
 async fn record_recent_file(path: String, state: State<'_, AppState>) -> Result<(), String> {
@@ -1112,6 +1393,7 @@ async fn get_files_by_tag(tag: String, state: State<'_, AppState>) -> Result<Vec
                 tags,
                 smart_group: row.get(9)?,
                 category: format!("tag_{}", tag),
+                snippet: None,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -1241,6 +1523,7 @@ async fn read_dir_shallow(path: String, state: State<'_, AppState>) -> Result<Ve
             tags,
             smart_group,
             category: "pc".to_string(),
+            snippet: None,
         });
     }
 
@@ -1394,6 +1677,7 @@ async fn get_mac_recent_files(state: tauri::State<'_, AppState>) -> Result<Vec<F
                 tags,
                 smart_group: sg,
                 category: "recent".to_string(),
+                snippet: None,
             });
         }
     }
@@ -1488,6 +1772,7 @@ async fn scan_workspace_stream(dir_path: String, app: tauri::AppHandle, state: S
                     tags: vec![],
                     smart_group: None,
                     category: "".to_string(),
+                    snippet: None,
                 };
                 
                 let _ = tx.blocking_send(item);
@@ -1695,7 +1980,56 @@ pub fn run() {
         generate_smart_group_name,
         create_aggregate_folder,
         reveal_in_finder,
-        create_custom_ai_cluster
+        create_custom_ai_cluster,
+        archive::archive_file,
+        archive::query_archives,
+        archive::get_archive_config,
+        archive::set_archive_config,
+        archive::rebuild_archive_index,
+        archive::detect_obsidian_vault,
+        archive::query_history_tags,
+        archive::query_recent_files,
+        archive::ai_analyze_files,
+        archive::generate_weekly_report,
+        archive::generate_project_summary,
+        archive::generate_analysis_report,
+        archive::write_text_file,
+        archive::smart_prefill_archive,
+        archive::ocr_and_summarize,
+        archive::write_temp_image,
+        archive::query_todos,
+        archive::update_todo_status,
+        archive::ai_todo_suggestions,
+        archive::add_manual_todo,
+        archive::query_today_todo_count,
+        archive::delete_manual_todo,
+        archive::update_todo,
+        archive::save_audio_file,
+        archive::transcribe_audio,
+        archive::parse_voice_to_archive,
+        archive::parse_title_fields,
+        archive::update_archive,
+        archive::delete_archive,
+        archive::delete_archive_node,
+        archive::create_demand,
+        archive::update_demand,
+        archive::query_demands,
+        archive::delete_demand,
+        archive::add_demand_doc_link,
+        archive::remove_demand_doc_link,
+        archive::query_demand_nodes,
+        archive::migrate_projects_to_demands,
+        asset::create_asset_task,
+        asset::delete_asset_task,
+        asset::list_asset_tasks,
+        asset::get_asset_task,
+        asset::scan_asset_task,
+        asset::query_asset_items,
+        asset::classify_asset_item,
+        asset::batch_classify_assets,
+        asset::search_assets,
+        asset::generate_knowledge_base,
+        asset::get_asset_stats,
     ])
     .setup(|app| {
       // 确定应用数据目录

@@ -1,20 +1,110 @@
-export const getFileIcon = (type) => {
-  switch (type) {
+import React from 'react';
+
+export const getFileIcon = (type, size = 28) => {
+  const t = (type || '').toLowerCase();
+  
+  // 统一定义普通图标样式：文件基底 + 中心标识
+  const baseRect = <rect x="3" y="2" width="18" height="20" rx="3" fill="currentColor" opacity="0.15" />;
+  const baseOutline = <path d="M5,2 L14,2 L19,7 L19,20 C19,21.1 18.1,22 17,22 L5,22 C3.9,22 3,21.1 3,20 L3,4 C3,2.9 3.9,2 5,2 Z M13,2 L13,8 L19,8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />;
+  
+  // 辅助函数：绘制 Mac 风格的 Office 图标
+  const renderMacOfficeIcon = (mainColor, letter, innerGraphic) => (
+    <svg viewBox="0 0 24 24" width={size} height={size}>
+      <defs>
+        <linearGradient id={`grad-${letter}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={mainColor} stopOpacity="0.7" />
+          <stop offset="100%" stopColor={mainColor} />
+        </linearGradient>
+      </defs>
+      {/* 外部文档主体 */}
+      <rect x="5" y="2" width="15" height="20" rx="4" fill="#ffffff" stroke="#94a3b8" strokeWidth="1.5" />
+      {/* 内部彩色渐变区域 */}
+      <rect x="7" y="5" width="11" height="11" rx="2" fill={`url(#grad-${letter})`} />
+      {/* 内部特征图形 (白线/网格等) */}
+      {innerGraphic}
+      {/* 左下角悬浮徽标 */}
+      <rect x="2" y="13" width="10" height="9" rx="3" fill={mainColor} stroke="#ffffff" strokeWidth="1.5" />
+      <text x="7" y="20.5" fill="#ffffff" fontSize="7.5" fontWeight="900" textAnchor="middle" fontFamily="sans-serif">{letter}</text>
+    </svg>
+  );
+
+  switch (t) {
     case 'folder':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#ffd54f"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>;
+      return (
+        <svg viewBox="0 0 24 24" width={size} height={size} fill="#f59e0b">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+      );
     case 'pdf':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#ef5350"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM14 11h1V8.5h-1V11z"/></svg>;
+      return (
+        <svg viewBox="0 0 24 24" width={size} height={size} color="#ef4444">
+          {baseRect}{baseOutline}
+          <text x="12" y="15" fill="currentColor" fontSize="8" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">PDF</text>
+        </svg>
+      );
     case 'excel':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#66bb6a"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 14h-2.5l-1.5-2.5-1.5 2.5H8l2.5-3.5L8 9h2.5l1.5 2.5L13.5 9H16l-2.5 3.5L16 16zm-3-9V3.5L18.5 9H13z"/></svg>;
+    case 'xlsx':
+    case 'xls':
+      return renderMacOfficeIcon(
+        '#10b981', // 绿色
+        'X',
+        <path d="M7 8.5 L18 8.5 M12.5 5 L12.5 16" stroke="#ffffff" strokeWidth="1" opacity="0.7" />
+      );
     case 'word':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#42a5f5"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1.8 14l-1.4-3.5L9.4 16H7.8l2.2-5h1.6l1.2 3.3 1.2-3.3h1.6l2.2 5h-1.6l-1.4-3.5L13.8 16h-1.6zm.8-9V3.5L18.5 9H13z"/></svg>;
-    case 'image':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#29b6f6"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>;
-    case 'video':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#ab47bc"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-2zM9 16V9l7 3.5L9 16z"/></svg>;
+    case 'doc':
+    case 'docx':
+      return renderMacOfficeIcon(
+        '#2563eb', // 蓝色
+        'W',
+        <>
+          <rect x="9" y="8" width="7" height="1.5" rx="0.5" fill="#ffffff" opacity="0.9" />
+          <rect x="9" y="11.5" width="4.5" height="1.5" rx="0.5" fill="#ffffff" opacity="0.9" />
+        </>
+      );
     case 'ppt':
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#ffa726"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-3.5 14H9v-5h1.5v5zm.75-6.5c-.41 0-.75-.34-.75-.75s.34-.75.75-.75.75.34.75.75-.34.75-.75.75zM13 9V3.5L18.5 9H13z"/></svg>;
+    case 'pptx':
+      return renderMacOfficeIcon(
+        '#ea580c', // 橙红
+        'P',
+        <>
+          <circle cx="12.5" cy="10.5" r="3" fill="#ffffff" opacity="0.9" />
+          <path d="M12.5 7.5 A3 3 0 0 1 15.5 10.5 L12.5 10.5 Z" fill="#ffffff" opacity="0.4" />
+        </>
+      );
+    case 'image':
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+      return (
+        <svg viewBox="0 0 24 24" width={size} height={size} color="#0ea5e9">
+          {baseRect}{baseOutline}
+          <circle cx="10" cy="11" r="1.5" fill="currentColor" />
+          <path d="M7 17 L11 13 L14 16 L17 12 L19 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'video':
+    case 'mp4':
+    case 'mov':
+      return (
+        <svg viewBox="0 0 24 24" width={size} height={size} color="#8b5cf6">
+          {baseRect}{baseOutline}
+          <polygon points="10,10 15,13.5 10,17" fill="currentColor" />
+        </svg>
+      );
+    case 'markdown':
+    case 'md':
+      return (
+        <svg viewBox="0 0 24 24" width={size} height={size} color="#64748b">
+          {baseRect}{baseOutline}
+          <text x="12" y="15" fill="currentColor" fontSize="8" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">M↓</text>
+        </svg>
+      );
     default:
-      return <svg viewBox="0 0 24 24" width="28" height="28" fill="#9e9e9e"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>;
+      return (
+        <svg viewBox="0 0 24 24" width={size} height={size} color="#94a3b8">
+          {baseRect}{baseOutline}
+          <path d="M8 12 L16 12 M8 15 L13 15 M8 9 L12 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
   }
 };
