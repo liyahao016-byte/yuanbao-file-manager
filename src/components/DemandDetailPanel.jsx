@@ -560,8 +560,6 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
         nextAction: nextActionStr,
       });
       setEditing(false);
-      // 「下一步」变更需同步到 todo 区
-      window.dispatchEvent(new CustomEvent('archive_data_changed'));
       if (onUpdated) onUpdated();
     } catch (err) {
       console.error('Update node failed:', err);
@@ -577,8 +575,6 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
     try {
       await invoke('delete_archive_node', { archiveId: node.id });
       setConfirming(false);
-      // 节点删除后其「下一步」待办也应从 todo 区移除
-      window.dispatchEvent(new CustomEvent('archive_data_changed'));
       if (onDeleted) onDeleted();
     } catch (e) {
       console.error('Delete node failed:', e);

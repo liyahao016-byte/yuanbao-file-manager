@@ -68,10 +68,7 @@ function App() {
   const [archiveConfigured, setArchiveConfigured] = useState(() => localStorage.getItem('archive_configured') === 'true');
   const [archiveRefreshKey, setArchiveRefreshKey] = useState(0); // 用于归档后触发时间线刷新
   const [showAIReport, setShowAIReport] = useState(false); // AI 报告面板
-  const [todoBubbleCount, setTodoBubbleCount] = useState(0); // Todo 气泡数量
-  const [todoBubbleHigh, setTodoBubbleHigh] = useState(false); // 是否有高优 Todo
-  const [archiveForTodo, setArchiveForTodo] = useState(null); // 双击 Todo 拉起归档表单的数据
-  const [openTodoSignal, setOpenTodoSignal] = useState(0); // 气泡点击时 +1，触发待办侧边栏打开
+  const [archiveContext, setArchiveContext] = useState(null); // 拉起归档表单时携带的上下文（需求节点 / 预填数据）
 
   useEffect(() => {
     const handleSmartStateChange = () => {
@@ -82,22 +79,6 @@ function App() {
       window.removeEventListener('smart_cluster_state_change', handleSmartStateChange);
     };
   }, []);
-
-  // 查询 Todo 气泡数量
-  useEffect(() => {
-    const fetchTodoBubble = async () => {
-      try {
-        if (window.__TAURI_INTERNALS__) {
-          const data = await invoke('query_today_todo_count');
-          setTodoBubbleCount(data.count || 0);
-          setTodoBubbleHigh(data.hasHighPriority || false);
-        }
-      } catch (e) { /* 忽略 */ }
-    };
-    fetchTodoBubble();
-    const interval = setInterval(fetchTodoBubble, 60000); // 每分钟刷新
-    return () => clearInterval(interval);
-  }, [archiveRefreshKey]); // archiveRefreshKey 变化时也刷新
 
   const [draggedFile, setDraggedFile] = useState(null);
   const [isGlobalDragging, setIsGlobalDragging] = useState(false);
@@ -221,32 +202,11 @@ function App() {
         }
       });
       console.log('[Archive] 归档成功:', result);
-      // 如果是从 Todo 双击拉起的，自动完成该 Todo 并生成链式 Todo
-      if (archiveForTodo) {
-        try {
-          await invoke('update_todo_status', { todoId: archiveForTodo.id, status: 'done' });
-          // 如果新归档包含新的 nextAction，则作为链式后续 Todo 创建
-          if (data.nextAction && archiveForTodo.source === 'manual') {
-            const nextTodos = (data.nextAction || '').split('\n').filter(t => t.trim());
-            for (const todoText of nextTodos) {
-              const match = todoText.match(/^\[(\d{4}-\d{2}-\d{2})\]\s*(.+)/);
-              const text = match ? match[2] : todoText.trim();
-              const dueDate = match ? match[1] : null;
-              await invoke('add_manual_todo', {
-                text, dueDate, project: data.project || null, priority: null,
-                parentTodoId: archiveForTodo.id,
-              });
-            }
-          }
-        } catch (e) { console.warn('[Archive] Todo 链式更新失败:', e); }
-        setArchiveForTodo(null);
-      }
+      setArchiveContext(null);
       // 归档成功：关闭弹窗 → 刷新时间线
       setShowArchiveFromCluster(false);
       setShowQuickArchive(false);
       setArchiveRefreshKey(prev => prev + 1);
-      // 广播「归档数据已变更」→ todo 区据此重新拉取，同步本次记录的「下一步」待办
-      window.dispatchEvent(new CustomEvent('archive_data_changed'));
       // 需求节点归档（带 demandId）：留在需求看板，方便继续推进时间线；
       // 普通归档：跳转到归档时间线查看结果
       if (!data.demandId) {
@@ -519,27 +479,7 @@ function App() {
       <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div style={{ padding: '16px 20px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '36px' }}>
           {!isSidebarCollapsed && (
-            <div style={{ position: 'relative', display: 'inline-block' }}>
-              <h1 style={{ fontSize: '18px', fontWeight: '700', letterSpacing: '0.5px', margin: 0, color: '#0f172a' }}>智能文件管理器</h1>
-              {todoBubbleCount > 0 && (
-                <span style={{
-                  position: 'absolute', top: -6, right: -22,
-                  minWidth: 16, height: 16, borderRadius: 8,
-                  background: todoBubbleHigh ? '#ef4444' : '#f59e0b',
-                  color: '#fff', fontSize: 10, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 4px', lineHeight: 1,
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                  animation: todoBubbleHigh ? 'todoBubblePulse 1.5s ease-in-out infinite' : 'none',
-                  cursor: 'pointer',
-                }}
-                onClick={() => { handleNavClick('archive_timeline'); setOpenTodoSignal(s => s + 1); }}
-                title={`${todoBubbleCount} 条今日待办`}
-                >
-                  {todoBubbleCount > 9 ? '9+' : todoBubbleCount}
-                </span>
-              )}
-            </div>
+            <h1 style={{ fontSize: '18px', fontWeight: '700', letterSpacing: '0.5px', margin: 0, color: '#0f172a' }}>智能文件管理器</h1>
           )}
           <div
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -1046,15 +986,12 @@ function App() {
                   refreshKey={archiveRefreshKey}
                   onOpenArchiveModal={(demandCtx) => {
                     if (demandCtx && demandCtx.demandId) {
-                      setArchiveForTodo({ demandId: demandCtx.demandId, demandTitle: demandCtx.demandTitle });
+                      setArchiveContext({ demandId: demandCtx.demandId, demandTitle: demandCtx.demandTitle });
                     }
                     setShowQuickArchive(true);
                   }}
                   onPreviewFile={(file) => handlePreviewFile(file)}
                   onOpenAIReport={() => setShowAIReport(true)}
-                  hasTodayTodos={todoBubbleCount > 0}
-                  openTodoSignal={openTodoSignal}
-                  onOpenArchiveForTodo={(todoItem) => { setArchiveForTodo(todoItem); setShowQuickArchive(true); }}
                 />
                 {previewFile && <PreviewerView file={previewFile} onClose={() => handlePreviewFile(null)} />}
               </>
@@ -1140,10 +1077,10 @@ function App() {
 
       {showQuickArchive && (
         <QuickArchiveModal
-          onClose={() => { setShowQuickArchive(false); setArchiveForTodo(null); }}
+          onClose={() => { setShowQuickArchive(false); setArchiveContext(null); }}
           onConfirm={handleArchiveConfirm}
-          todoItem={archiveForTodo}
-          demandContext={archiveForTodo?.demandId ? { demandId: archiveForTodo.demandId, demandTitle: archiveForTodo.demandTitle } : null}
+          prefill={archiveContext}
+          demandContext={archiveContext?.demandId ? { demandId: archiveContext.demandId, demandTitle: archiveContext.demandTitle } : null}
         />
       )}
 

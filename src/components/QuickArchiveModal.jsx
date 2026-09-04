@@ -13,11 +13,11 @@ import { open } from '@tauri-apps/plugin-dialog';
  * 5. 表单自动填入 AI 推荐内容
  * 6. 用户微调后确认归档
  */
-export default function QuickArchiveModal({ onClose, onConfirm, todoItem, demandContext }) {
-  // 表单状态 — 如果有 todoItem 则预填
-  const [title, setTitle] = useState(todoItem?.text || '');
-  const [project, setProject] = useState(todoItem?.archiveProject || '');
-  const [priority, setPriority] = useState(todoItem?.priority === 'urgent' ? 'P0' : todoItem?.priority === 'high' ? 'P1' : '');
+export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandContext }) {
+  // 表单状态 — 如果传入 prefill 则用其内容预填（来源可以是任意需要预填表单的场景）
+  const [title, setTitle] = useState(prefill?.text || '');
+  const [project, setProject] = useState(prefill?.archiveProject || '');
+  const [priority, setPriority] = useState(prefill?.priority === 'urgent' ? 'P0' : prefill?.priority === 'high' ? 'P1' : '');
   const [duration, setDuration] = useState('');
   const [output, setOutput] = useState('');
   const [blocker, setBlocker] = useState('');

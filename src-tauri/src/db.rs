@@ -140,16 +140,6 @@ pub fn init_db(app_dir: &PathBuf) -> Result<Connection> {
         [],
     )?;
 
-    // Todo status tracking table (归档待办完成状态追踪)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS todo_status (
-            id           TEXT PRIMARY KEY,
-            status       TEXT NOT NULL DEFAULT 'pending',
-            completed_at INTEGER
-        )",
-        [],
-    )?;
-
     // ── Asset Distiller tables (智能资产沉淀) ──
 
     conn.execute(

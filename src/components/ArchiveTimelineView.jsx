@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
-import TodoTrackerSidebar from './TodoTrackerSidebar';
 
 /**
  * ArchiveTimelineView — 归档时间线视图
@@ -68,7 +67,7 @@ function computeStats(archives) {
 }
 
 // ── 主组件 ──────────────────────────────────────────────
-export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile, onOpenAIReport, onOpenArchiveForTodo, hasTodayTodos, openTodoSignal }) {
+export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile, onOpenAIReport }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
   const [selectedPriority, setSelectedPriority] = useState('');
@@ -76,25 +75,10 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
   const [hoveredCard, setHoveredCard] = useState(null);
   const [archives, setArchives] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [todoSidebarVisible, setTodoSidebarVisible] = useState(false);
   const [editingArchive, setEditingArchive] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [saving, setSaving] = useState(false);
-
-  // 有今日待办时自动弹出侧边栏
-  useEffect(() => {
-    if (hasTodayTodos) {
-      setTodoSidebarVisible(true);
-    }
-  }, []); // 仅首次挂载时
-
-  // 气泡点击信号 → 自动打开待办侧边栏
-  useEffect(() => {
-    if (openTodoSignal > 0) {
-      setTodoSidebarVisible(true);
-    }
-  }, [openTodoSignal]);
 
   // 加载归档数据（Tauri → 真实数据，浏览器 → 空列表）
   const loadArchives = useCallback(async () => {
@@ -290,7 +274,6 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
   }
   
   return (
-    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
     <div style={{ flex: 1, overflow: 'auto', background: '#fafbfc', padding: '24px 32px' }}>
       
       {/* ── 顶部标题栏 ─────────────────────────────── */}
@@ -313,31 +296,6 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
         </div>
         
         <div style={{ display: 'flex', gap: 8 }}>
-          {/* Todo 追踪侧边栏开关 — 醒目样式 */}
-          <button
-            onClick={() => setTodoSidebarVisible(v => !v)}
-            style={{
-              padding: '8px 18px',
-              background: todoSidebarVisible
-                ? 'linear-gradient(135deg, #4f46e5, #6366f1)'
-                : 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 7, transition: 'all 0.2s',
-              boxShadow: todoSidebarVisible
-                ? '0 2px 8px rgba(79,70,229,0.3)'
-                : '0 2px 8px rgba(59,130,246,0.25)',
-            }}
-            onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
-            onMouseOut={e => e.currentTarget.style.opacity = '1'}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-            待办
-          </button>
-
           {onOpenAIReport && (
             <button
               onClick={onOpenAIReport}
@@ -982,13 +940,6 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
           </div>
         )}
       </div>
-    </div>
-    {/* Todo 追踪侧边栏 */}
-    <TodoTrackerSidebar
-      visible={todoSidebarVisible}
-      onClose={() => setTodoSidebarVisible(false)}
-      onOpenArchiveForTodo={onOpenArchiveForTodo}
-    />
     </div>
   );
 }

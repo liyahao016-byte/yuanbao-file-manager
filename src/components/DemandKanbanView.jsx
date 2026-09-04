@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import DemandDetailPanel from './DemandDetailPanel';
-import TodoTrackerSidebar from './TodoTrackerSidebar';
 
 /**
  * DemandKanbanView — 产品需求看板
@@ -47,9 +46,6 @@ const priorityStyles = {
 export default function DemandKanbanView({
   onOpenArchiveModal,
   refreshKey,
-  onOpenArchiveForTodo,
-  hasTodayTodos,
-  openTodoSignal,
 }) {
   const [demands, setDemands] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -443,9 +439,6 @@ export default function DemandKanbanView({
           />
         </div>
       )}
-
-      {/* ── C 区：右侧 todo 追踪（看板首页 / 详情模式均常驻显示） ── */}
-      <TodoTrackerSidebar onOpenArchiveForTodo={onOpenArchiveForTodo} />
 
       {/* ── 新建需求弹窗（两种模式共享） ── */}
       {showNewForm && (
