@@ -640,7 +640,7 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
                         {archive.linkedFiles && archive.linkedFiles.length > 0 && (
                           <div style={{ marginTop: 4 }}>
                             <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
-                              📎 附件（{archive.linkedFiles.length}）
+                              📎 附件（双击卡片直接打开文件）
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {archive.linkedFiles.map((filePath, i) => {
@@ -654,26 +654,30 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
                                       fontSize: 12, padding: '6px 10px', borderRadius: 8,
                                       background: '#f9fafb', border: '1px solid #e5e7eb', color: '#374151',
                                       display: 'flex', alignItems: 'center', gap: 8,
-                                      transition: 'all 0.15s',
+                                      transition: 'all 0.15s', cursor: 'pointer', userSelect: 'none',
                                     }}
                                     onMouseEnter={e => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.borderColor = '#c7d2fe'; }}
                                     onMouseLeave={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      if (window.__TAURI_INTERNALS__ || window.__TAURI__) {
+                                        invoke('open_file_in_default_app', { path: filePath }).catch(err => {
+                                          alert('打开文件失败: ' + err);
+                                        });
+                                      } else {
+                                        alert('【Web模式】双击打开文件:\n' + filePath);
+                                      }
+                                    }}
+                                    title={`双击：使用默认程序打开文件\n点击右侧[定位]：在文件管理器中定位选中\n路径：${filePath}`}
                                   >
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#6366f1" strokeWidth="2" style={{ flexShrink: 0 }}>
                                       <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
                                       <path d="M13 2v7h7" />
                                     </svg>
                                     <span
-                                      title={filePath}
                                       style={{
                                         flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                        cursor: 'pointer', color: '#4f46e5', fontWeight: 500,
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (window.__TAURI_INTERNALS__) {
-                                          open(filePath).catch(err => console.warn('Failed to open file:', err));
-                                        }
+                                        color: '#4f46e5', fontWeight: 500,
                                       }}
                                     >
                                       {fileName}
@@ -688,46 +692,35 @@ export default function ArchiveTimelineView({ onOpenArchiveModal, onPreviewFile,
                                         }}
                                         style={{
                                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                          width: 24, height: 24, borderRadius: 6, border: '1px solid #e5e7eb',
-                                          background: '#fff', cursor: 'pointer', flexShrink: 0,
-                                          transition: 'all 0.15s',
+                                          padding: '2px 8px', borderRadius: 4, border: '1px solid #c7d2fe',
+                                          background: '#eef2ff', color: '#4338ca', fontSize: 11, cursor: 'pointer', flexShrink: 0,
+                                          transition: 'all 0.15s', fontWeight: 500,
                                         }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.borderColor = '#a5b4fc'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
                                       >
-                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#6366f1" strokeWidth="2">
-                                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                          <circle cx="12" cy="12" r="3" />
-                                        </svg>
+                                        预览
                                       </button>
                                     )}
-                                    {/* 定位按钮 — 在 Finder 中显示文件位置 */}
+                                    {/* 定位按钮 */}
                                     <button
-                                      title="在 Finder 中定位此文件"
+                                      title="在 Finder / 文件管理器中定位此文件"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (window.__TAURI_INTERNALS__) {
-                                          invoke('reveal_in_finder', { path: filePath }).catch(err => {
-                                            console.warn('Failed to reveal file:', err);
+                                        if (window.__TAURI_INTERNALS__ || window.__TAURI__) {
+                                          invoke('show_in_folder', { path: filePath }).catch(err => {
                                             alert('定位失败: ' + err);
                                           });
+                                        } else {
+                                          alert('【Web模式】已定位文件路径:\n' + filePath);
                                         }
                                       }}
                                       style={{
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        width: 24, height: 24, borderRadius: 6, border: '1px solid #e5e7eb',
-                                        background: '#fff', cursor: 'pointer', flexShrink: 0,
-                                        transition: 'all 0.15s',
+                                        padding: '2px 8px', borderRadius: 4, border: '1px solid #d1d5db',
+                                        background: '#fff', color: '#374151', fontSize: 11, cursor: 'pointer', flexShrink: 0,
+                                        transition: 'all 0.15s', fontWeight: 500,
                                       }}
-                                      onMouseEnter={e => { e.currentTarget.style.background = '#ecfdf5'; e.currentTarget.style.borderColor = '#a7f3d0'; }}
-                                      onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
                                     >
-                                      {/* 文件夹定位图标 */}
-                                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#059669" strokeWidth="2">
-                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
-                                        <circle cx="12" cy="14" r="2" />
-                                        <path d="M12 12v-2" strokeLinecap="round" />
-                                      </svg>
+                                      定位
                                     </button>
                                   </div>
                                 );

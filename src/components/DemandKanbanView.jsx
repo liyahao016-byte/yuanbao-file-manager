@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import DemandDetailPanel from './DemandDetailPanel';
+import DemandTodoPanel from './DemandTodoPanel';
 
 /**
  * DemandKanbanView — 产品需求看板
@@ -56,35 +57,118 @@ export default function DemandKanbanView({
   const [newPriority, setNewPriority] = useState('P1');
   const [newPhase, setNewPhase] = useState('');
   const [newStatus, setNewStatus] = useState('planning');
+  const [newOwner, setNewOwner] = useState('');
   const [dragItem, setDragItem] = useState(null);
   const [filterPriority, setFilterPriority] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
-  // todo 侧栏已重构为右侧常驻 C 区（与 A 状态速览 / B 推进时间线并列），不再需要 visible 控制
+  const [enhancedSearchResults, setEnhancedSearchResults] = useState([]);
+  const [isSearchingEnhanced, setIsSearchingEnhanced] = useState(false);
+  const [activeTodoCount, setActiveTodoCount] = useState(0);
+
+  // ── 实时同步活跃待办总数 ──
+  useEffect(() => {
+    const loadActiveTodoCount = async () => {
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          const list = await invoke('query_demand_todos');
+          setActiveTodoCount(list ? list.length : 0);
+        } else {
+          const localCustom = JSON.parse(localStorage.getItem('web_custom_todos') || '[]');
+          const localDemands = JSON.parse(localStorage.getItem('web_demands') || '[]');
+          const demandTodos = localDemands.filter(d => d.next_step && d.next_step.trim());
+          setActiveTodoCount(localCustom.length + demandTodos.length);
+        }
+      } catch (err) {
+        console.error('Failed to load active todo count:', err);
+      }
+    };
+    loadActiveTodoCount();
+  }, [demands, refreshKey]);
+
+  // ── 智能混合检索 (包含文档与聊天截图 OCR 识别结果) ──
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setEnhancedSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingEnhanced(true);
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          const results = await invoke('search_demands_enhanced', { query: searchQuery.trim() });
+          setEnhancedSearchResults(results || []);
+        }
+      } catch (err) {
+        console.error('Enhanced search failed:', err);
+      } finally {
+        setIsSearchingEnhanced(false);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleSelectSearchResult = (result) => {
+    if (!result) return;
+
+    // 1. 准确提取目标需求 ID (兼容 demand_id 与 id 属性)
+    const targetDemandId = result.demand_id || (result.match_type === 'demand' ? result.id : null);
+    if (targetDemandId) {
+      setSelectedDemandId(targetDemandId);
+    }
+
+    // 2. 收起下拉框并清空搜索词，确保需求看板卡片不被错误过滤清空
+    setSearchQuery('');
+    setSearchFocused(false);
+
+    // 3. 延时等侧拉面板 DOM 挂载渲染完成后，高亮平滑滚动至对应的节点卡片
+    const targetNodeId = result.node_id || (result.match_type === 'node' ? result.id : null);
+    if (targetNodeId) {
+      setTimeout(() => {
+        const el = document.getElementById(`demand-node-${targetNodeId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.transition = 'all 0.3s ease';
+          el.style.boxShadow = '0 0 0 3px #6366f1, 0 8px 24px rgba(99,102,241,0.35)';
+          el.style.borderRadius = '10px';
+          setTimeout(() => {
+            el.style.boxShadow = 'none';
+          }, 3500);
+        }
+      }, 400);
+    }
+  };
 
   // ── 数据加载 ──
   const loadDemands = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await invoke('query_demands', {
-        status: null,
-        search: searchQuery || null,
-      });
-      setDemands(data);
+      if (window.__TAURI_INTERNALS__) {
+        // 保持看板卡片数据全量加载，增强搜索使用独立的 search_demands_enhanced
+        const data = await invoke('query_demands', {
+          status: null,
+          search: null,
+        });
+        setDemands(data || []);
+      } else {
+        const local = JSON.parse(localStorage.getItem('web_demands') || '[]');
+        setDemands(local);
+      }
     } catch (e) {
       console.error('Failed to load demands:', e);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery]);
+  }, []);
 
   useEffect(() => { loadDemands(); }, [loadDemands, refreshKey]);
 
-  // ── 按状态分组 ──
+  // ── 按状态分组（兼容 'doing' / 'active' 列归属） ──
   const groupedDemands = useMemo(() => {
     const groups = {};
     STATUS_COLUMNS.forEach(col => { groups[col.key] = []; });
     demands.forEach(d => {
-      const key = d.status || 'planning';
+      let key = d.status || 'planning';
+      if (key === 'doing') key = 'active';
       if (groups[key]) {
         if (!filterPriority || d.priority === filterPriority) {
           groups[key].push(d);
@@ -94,15 +178,17 @@ export default function DemandKanbanView({
     return groups;
   }, [demands, filterPriority]);
 
-  // ── 统计 ──
+  // ── 统计：确保各指标与实际看板卡片数及待办列表 100% 同步 ──
   const stats = useMemo(() => {
+    const activeCount = demands.filter(d => d.status === 'active' || d.status === 'doing').length;
+    const doneCount = demands.filter(d => d.status === 'done').length;
     return {
       total: demands.length,
-      active: demands.filter(d => d.status === 'active').length,
-      hasBlocker: demands.filter(d => d.blocker && d.blocker.trim()).length,
-      done: demands.filter(d => d.status === 'done').length,
+      active: activeCount,
+      done: doneCount,
+      todoCount: activeTodoCount,
     };
-  }, [demands]);
+  }, [demands, activeTodoCount]);
 
   // ── 新建需求 ──
   const handleCreateDemand = async () => {
@@ -112,18 +198,36 @@ export default function DemandKanbanView({
       finalStatus = phaseToStatus(newPhase);
     }
     try {
-      await invoke('create_demand', {
-        input: {
+      if (window.__TAURI_INTERNALS__) {
+        await invoke('create_demand', {
+          input: {
+            title: newTitle.trim(),
+            status: finalStatus,
+            priority: newPriority,
+            phase: newPhase || null,
+            owner: newOwner.trim() || null,
+          }
+        });
+      } else {
+        const local = JSON.parse(localStorage.getItem('web_demands') || '[]');
+        const newDemand = {
+          id: 'dmd_' + Date.now(),
           title: newTitle.trim(),
           status: finalStatus,
           priority: newPriority,
-          phase: newPhase || null,
-        }
-      });
+          phase: newPhase || '需求调研',
+          owner: newOwner.trim() || null,
+          nodeCount: 0,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        };
+        localStorage.setItem('web_demands', JSON.stringify([newDemand, ...local]));
+      }
       setNewTitle('');
       setNewPriority('P1');
       setNewPhase('');
       setNewStatus('planning');
+      setNewOwner('');
       setShowNewForm(false);
       loadDemands();
     } catch (e) {
@@ -206,122 +310,244 @@ export default function DemandKanbanView({
             onSelect={openDetail}
             onNewDemand={() => setShowNewForm(true)}
             onBackToFull={() => closeDetail()}
+            enhancedSearchResults={enhancedSearchResults}
+            isSearchingEnhanced={isSearchingEnhanced}
+            handleSelectSearchResult={handleSelectSearchResult}
           />
         ) : (
           // flex:1 1 0% + minWidth:0 —— 窗口宽度扩展时，本区域吸收全部新增宽度（todo 区固定不变）
           <div style={{ flex: '1 1 0%', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* ── 顶部栏 ── */}
+            {/* ── 顶部 Header (方案 1C：双层紧凑 Linear 工具栏) ── */}
             <div style={{
-              padding: '20px 28px 16px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              flexShrink: 0,
-              background: 'linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%)',
-              borderBottom: '1px solid rgba(0,0,0,0.04)',
+              display: 'flex', flexDirection: 'column', flexShrink: 0,
+              background: '#ffffff', borderBottom: '1px solid #e5e7eb',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(99,102,241,0.25)',
-                }}>
-                  <span style={{ fontSize: 18, filter: 'brightness(10)' }}>📋</span>
+              {/* 第一行：主标题 + 搜索框 + 新建按钮 (高密度单行，包含 whiteSpace: nowrap 防折行) */}
+              <div style={{
+                padding: '12px 20px 10px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+              }}>
+                {/* 标题 & 副标题 (单行排列，防折行) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(99,102,241,0.25)', flexShrink: 0,
+                  }}>
+                    <span style={{ fontSize: 16, filter: 'brightness(10)' }}>📋</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0, letterSpacing: '-0.2px', flexShrink: 0 }}>
+                      产品需求看板
+                    </h2>
+                    <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400, textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                      需求全景跟踪与协同
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h2 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0, letterSpacing: '-0.3px' }}>
-                    产品需求看板
-                  </h2>
-                  <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>
-                    需求全景跟踪与协同
-                  </span>
+
+                {/* 右侧：搜索框与新建需求按钮 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                  {/* 搜索框 */}
+                  <div style={{ position: 'relative', transition: 'all 0.2s ease' }}>
+                    <input
+                      placeholder="搜索需求、关键结论、文档与聊天截图..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => setSearchFocused(false)}
+                      style={{
+                        width: searchFocused ? 240 : 180, padding: '6px 12px 6px 30px',
+                        borderRadius: 8,
+                        border: `1.5px solid ${searchFocused ? '#6366f1' : '#e5e7eb'}`,
+                        fontSize: 12, outline: 'none',
+                        background: searchFocused ? '#fff' : '#f9fafb',
+                        boxShadow: searchFocused ? '0 0 0 3px rgba(99,102,241,0.08)' : 'none',
+                        transition: 'all 0.2s ease',
+                        color: '#374151',
+                      }}
+                    />
+                    <span style={{
+                      position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                      fontSize: 13, color: searchFocused ? '#6366f1' : '#9ca3af',
+                      pointerEvents: 'none',
+                    }}>🔍</span>
+
+                    {/* 方案 A 极简悬浮下拉搜索结果面板 */}
+                    {searchQuery.trim() && searchFocused && (
+                      <div
+                        onMouseDown={e => e.preventDefault()}
+                        style={{
+                          position: 'absolute', top: '100%', right: 0, width: 340, zIndex: 120,
+                          background: '#ffffff', borderRadius: 10, border: '1px solid #cbd5e1',
+                          boxShadow: '0 12px 28px -4px rgba(0,0,0,0.18), 0 4px 12px rgba(99,102,241,0.08)',
+                          marginTop: 6, maxHeight: 380, overflowY: 'auto', padding: '6px 8px',
+                        }}
+                      >
+                        <div style={{
+                          fontSize: 11, fontWeight: 700, color: '#475569', padding: '6px 8px',
+                          borderBottom: '1px solid #f1f5f9', marginBottom: 6, display: 'flex', justifyContent: 'space-between',
+                        }}>
+                          <span>🔍 需求看板检索 ({enhancedSearchResults.length}条)</span>
+                          {isSearchingEnhanced && <span style={{ color: '#6366f1' }}>检索中...</span>}
+                        </div>
+
+                        {enhancedSearchResults.length === 0 ? (
+                          <div style={{ fontSize: 11, color: '#94a3b8', padding: '16px 8px', textAlign: 'center' }}>
+                            未匹配到相关的需求记录、关键结论或截图 OCR 内容
+                          </div>
+                        ) : (
+                          enhancedSearchResults.map((res, i) => (
+                            <div
+                              key={i}
+                              onClick={() => {
+                                handleSelectSearchResult(res);
+                                setSearchFocused(false);
+                              }}
+                              style={{
+                                padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                                background: '#fafafa', border: '1px solid #f1f5f9', marginBottom: 6,
+                                transition: 'all 0.15s',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.borderColor = '#c7d2fe'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.borderColor = '#f1f5f9'; }}
+                            >
+                              {/* 所属需求名称 */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, color: '#1e293b',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%',
+                                }}>
+                                  📌 {res.demand_title}
+                                </span>
+                                <span style={{ fontSize: 10, color: '#94a3b8' }}>{res.date}</span>
+                              </div>
+
+                              {/* 命中内容摘要 */}
+                              <div style={{
+                                fontSize: 11, color: '#475569', lineHeight: 1.45,
+                                overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box',
+                                WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                              }}>
+                                {res.match_type === 'chat_screenshot' && <span style={{ color: '#0284c7', fontWeight: 600, marginRight: 4 }}>🖼️ 截图OCR:</span>}
+                                {res.match_type === 'document' && <span style={{ color: '#6366f1', fontWeight: 600, marginRight: 4 }}>📄 关联文档:</span>}
+                                {res.snippet}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 新建需求按钮 */}
+                  <button
+                    onClick={() => setShowNewForm(true)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, border: 'none',
+                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                      color: '#fff', fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+                      boxShadow: '0 2px 6px rgba(99,102,241,0.25)',
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.35)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 6px rgba(99,102,241,0.25)'}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 300 }}>+</span>
+                    新建需求
+                  </button>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {/* 搜索框 */}
-                <div style={{ position: 'relative', transition: 'all 0.2s ease' }}>
-                  <input
-                    placeholder="搜索需求..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                    style={{
-                      width: searchFocused ? 240 : 200, padding: '8px 14px 8px 36px',
-                      borderRadius: 10,
-                      border: `1.5px solid ${searchFocused ? '#a5b4fc' : '#e5e7eb'}`,
-                      fontSize: 13, outline: 'none',
-                      background: searchFocused ? '#fff' : '#f3f4f6',
-                      boxShadow: searchFocused ? '0 0 0 3px rgba(99,102,241,0.08)' : 'none',
-                      transition: 'all 0.2s ease',
-                      color: '#374151',
-                    }}
-                  />
-                  <span style={{
-                    position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)',
-                    fontSize: 15, color: searchFocused ? '#6366f1' : '#9ca3af',
-                    transition: 'color 0.2s',
-                  }}>🔍</span>
+              {/* 第二行：极简 30px 工具条（包含 4 个核心微型指标与 P0/P1/P2 筛选） */}
+              <div style={{
+                padding: '6px 20px',
+                background: '#f8fafc',
+                borderTop: '1px solid #f1f5f9',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                fontSize: '11px',
+              }}>
+                {/* 左侧：4 个核心指标 Chip 标签 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    padding: '2px 8px', borderRadius: '6px',
+                    background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
+                    fontWeight: '600',
+                  }}>
+                    <span>📊</span>
+                    <span>总需求</span>
+                    <span style={{ background: '#4338ca', color: '#fff', padding: '0 5px', borderRadius: '10px', fontSize: '10px' }}>
+                      {stats.total}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    padding: '2px 8px', borderRadius: '6px',
+                    background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+                    fontWeight: '600',
+                  }}>
+                    <span>🔥</span>
+                    <span>进行中</span>
+                    <span style={{ background: '#1d4ed8', color: '#fff', padding: '0 5px', borderRadius: '10px', fontSize: '10px' }}>
+                      {stats.active}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    padding: '2px 8px', borderRadius: '6px',
+                    background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0',
+                    fontWeight: '600',
+                  }}>
+                    <span>🎯</span>
+                    <span>已完成</span>
+                    <span style={{ background: '#047857', color: '#fff', padding: '0 5px', borderRadius: '10px', fontSize: '10px' }}>
+                      {stats.done}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    padding: '2px 8px', borderRadius: '6px',
+                    background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a',
+                    fontWeight: '600',
+                  }}>
+                    <span>⚡</span>
+                    <span>待办数</span>
+                    <span style={{ background: '#b45309', color: '#fff', padding: '0 5px', borderRadius: '10px', fontSize: '10px' }}>
+                      {stats.todoCount}
+                    </span>
+                  </div>
                 </div>
-                {/* 优先级筛选 */}
-                <div style={{ display: 'flex', gap: 5, background: '#f3f4f6', padding: '3px 4px', borderRadius: 10 }}>
+
+                {/* 右侧：优先级筛选按钮 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                  <span style={{ color: '#94a3b8', fontSize: '11px', marginRight: '2px' }}>优先级:</span>
                   {PRIORITIES.map(p => {
                     const active = filterPriority === p;
                     return (
-                      <button key={p} onClick={() => setFilterPriority(active ? null : p)} style={{
-                        padding: '4px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600,
-                        border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                        background: active ? '#fff' : 'transparent',
-                        color: active ? priorityStyles[p].text : '#9ca3af',
-                        boxShadow: active ? `0 1px 4px ${priorityStyles[p].glow}` : 'none',
-                      }}>{p}</button>
+                      <button
+                        key={p}
+                        onClick={() => setFilterPriority(active ? null : p)}
+                        style={{
+                          padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                          border: active ? `1px solid ${priorityStyles[p].border}` : '1px solid transparent',
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          background: active ? priorityStyles[p].bg : 'transparent',
+                          color: active ? priorityStyles[p].text : '#64748b',
+                        }}
+                      >
+                        {p}
+                      </button>
                     );
                   })}
                 </div>
-                {/* 新建需求按钮 */}
-                <button
-                  onClick={() => setShowNewForm(true)}
-                  style={{
-                    padding: '8px 18px', borderRadius: 10, border: 'none',
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                    color: '#fff', fontSize: 13, fontWeight: 600,
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                    boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)'}
-                  onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.3)'}
-                >
-                  <span style={{ fontSize: 15, fontWeight: 300 }}>+</span>
-                  新建需求
-                </button>
               </div>
-            </div>
-
-            {/* ── 统计卡片条 ── */}
-            <div style={{
-              padding: '10px 28px 14px', display: 'flex', gap: 10,
-              flexShrink: 0,
-            }}>
-              {[
-                { label: '总需求', value: stats.total, color: '#6366f1', bg: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', icon: '📊' },
-                { label: '进行中', value: stats.active, color: '#3b82f6', bg: 'linear-gradient(135deg, #eff6ff, #dbeafe)', icon: '🔥' },
-                { label: '有卡点', value: stats.hasBlocker, color: '#ef4444', bg: 'linear-gradient(135deg, #fef2f2, #fee2e2)', icon: '⚠️' },
-                { label: '已完成', value: stats.done, color: '#10b981', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', icon: '🎯' },
-              ].map(s => (
-                <div key={s.label} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  background: s.bg, borderRadius: 10, padding: '8px 16px',
-                  minWidth: 110,
-                  border: '1px solid rgba(0,0,0,0.03)',
-                }}>
-                  <span style={{ fontSize: 16 }}>{s.icon}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 500, lineHeight: 1 }}>{s.label}</span>
-                    <span style={{ fontWeight: 800, color: s.color, fontSize: 18, lineHeight: 1.3, letterSpacing: '-0.5px' }}>{s.value}</span>
-                  </div>
-                </div>
-              ))}
             </div>
 
             {/* ── 看板主体 ── 2×2 网格布局 */}
@@ -431,6 +657,7 @@ export default function DemandKanbanView({
           <DemandDetailPanel
             key={selectedDemand.id}
             demand={selectedDemand}
+            refreshKey={refreshKey}
             mode="main"
             onBack={closeDetail}
             onClose={closeDetail}
@@ -602,6 +829,31 @@ export default function DemandKanbanView({
           </div>
         </div>
       )}
+
+      {/* ── 右侧需求跟进 Todo 控制台 (Dock) ── */}
+      <DemandTodoPanel
+        refreshKey={refreshKey}
+        onOpenNewDemand={() => setShowNewForm(true)}
+        onTodoCountChange={(count) => setActiveTodoCount(count)}
+        onDoubleClickTodo={(todo) => {
+          if (!todo.is_custom && todo.demand_id) {
+            setSelectedDemandId(todo.demand_id);
+          }
+        }}
+        onCompleteWithRecord={(todo) => {
+          if (onOpenArchiveModal) {
+            onOpenArchiveModal({
+              demandId: todo.demand_id || null,
+              demandName: todo.demand_title || todo.project_name || '',
+              nodeType: 'completion',
+              title: '',
+              defaultContent: '',
+              blocker: '',
+              completedTodoItem: todo,
+            });
+          }
+        }}
+      />
     </div>
   );
 }
@@ -620,6 +872,9 @@ function CompactSidebar({
   onSelect,
   onNewDemand,
   onBackToFull,
+  enhancedSearchResults = [],
+  isSearchingEnhanced = false,
+  handleSelectSearchResult,
 }) {
   const totalCount = demands.length;
   return (
@@ -674,10 +929,10 @@ function CompactSidebar({
           >+</button>
         </div>
 
-        {/* 搜索框 */}
+        {/* 搜索框与线索匹配下拉框 */}
         <div style={{ position: 'relative', transition: 'all 0.2s ease', marginBottom: 8 }}>
           <input
-            placeholder="搜索需求..."
+            placeholder="搜索需求、文档与聊天截图..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
@@ -697,6 +952,58 @@ function CompactSidebar({
             position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
             fontSize: 13, color: searchFocused ? '#6366f1' : '#9ca3af',
           }}>🔍</span>
+
+          {/* 方案 A 极简悬浮下拉搜索结果面板 */}
+          {searchQuery.trim() && searchFocused && (
+            <div
+              onMouseDown={e => e.preventDefault()}
+              style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 120,
+                background: '#ffffff', borderRadius: 10, border: '1px solid #cbd5e1',
+                boxShadow: '0 12px 28px -4px rgba(0,0,0,0.18)', marginTop: 4,
+                maxHeight: 340, overflowY: 'auto', padding: 8,
+              }}
+            >
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', padding: '4px 6px', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+                <span>🔍 需求看板检索 ({(enhancedSearchResults || []).length}条)</span>
+                {isSearchingEnhanced && <span style={{ color: '#6366f1' }}>检索中...</span>}
+              </div>
+              {(!enhancedSearchResults || enhancedSearchResults.length === 0) ? (
+                <div style={{ fontSize: 11, color: '#94a3b8', padding: '12px 6px', textAlign: 'center' }}>
+                  未匹配到相关内容或文档
+                </div>
+              ) : (
+                enhancedSearchResults.map((res, i) => {
+                  if (!res) return null;
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handleSelectSearchResult && handleSelectSearchResult(res)}
+                      style={{
+                        padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                        background: '#fafafa', border: '1px solid #f1f5f9', marginBottom: 6,
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.borderColor = '#c7d2fe'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.borderColor = '#f1f5f9'; }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, fontWeight: 600, color: '#1e293b' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>
+                          📌 {res.demand_title || '独立需求'}
+                        </span>
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{res.date || ''}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#475569', marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>
+                        {res.match_type === 'chat_screenshot' && <span style={{ color: '#0284c7', fontWeight: 600, marginRight: 4 }}>🖼️ 截图OCR:</span>}
+                        {res.match_type === 'document' && <span style={{ color: '#6366f1', fontWeight: 600, marginRight: 4 }}>📄 关联文档:</span>}
+                        {res.snippet || ''}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
         {/* 优先级筛选 */}

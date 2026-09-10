@@ -242,15 +242,50 @@ pub fn init_db(app_dir: &PathBuf) -> Result<Connection> {
         [],
     )?;
 
-    // 兼容旧库：旧版字段 target_date/blocker/next_todo 仍可能存在，
-    // 新需求结构不再使用，这里仅追加新字段。旧列保留以避免重建表。
+    // 兼容旧库：字段支持增加
     let _ = conn.execute("ALTER TABLE demands ADD COLUMN version TEXT", []);
     let _ = conn.execute("ALTER TABLE demands ADD COLUMN expected_merge_date TEXT", []);
     let _ = conn.execute("ALTER TABLE demands ADD COLUMN online_date TEXT", []);
     let _ = conn.execute("ALTER TABLE demands ADD COLUMN notes TEXT", []);
+    let _ = conn.execute("ALTER TABLE demands ADD COLUMN next_step TEXT", []);
+    let _ = conn.execute("ALTER TABLE demands ADD COLUMN blocker TEXT", []);
+    let _ = conn.execute("ALTER TABLE demands ADD COLUMN target_date TEXT", []);
+    let _ = conn.execute("ALTER TABLE demands ADD COLUMN owner TEXT", []);
+    let _ = conn.execute("ALTER TABLE demands ADD COLUMN remind_at TEXT", []);
 
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_demands_status   ON demands(status)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_demands_priority ON demands(priority)", []);
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_demands_todo     ON demands(status, online_date, target_date)", []);
+
+    // FTS5 Trigram 模糊搜索索引（用于需求节点与待办速查）
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS demand_nodes_fts USING fts5(
+            archive_id, demand_id, title, content, blocker, next_action, tokenize='trigram'
+        )",
+        [],
+    )?;
+
+    // 独立自定义待办表（不关联需求的自由 Todo）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS custom_todos (
+            id           TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            project_name TEXT,
+            priority     TEXT DEFAULT 'P1',
+            target_date  TEXT NOT NULL,
+            owner        TEXT,
+            remind_at    TEXT,
+            is_completed INTEGER DEFAULT 0,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        )",
+        [],
+    )?;
+
+    let _ = conn.execute("ALTER TABLE custom_todos ADD COLUMN owner TEXT", []);
+    let _ = conn.execute("ALTER TABLE custom_todos ADD COLUMN remind_at TEXT", []);
+    let _ = conn.execute("ALTER TABLE archives ADD COLUMN owner TEXT", []);
+    let _ = conn.execute("ALTER TABLE archives ADD COLUMN remind_at TEXT", []);
 
     // 需求级文档链接表
     conn.execute(
@@ -275,6 +310,32 @@ pub fn init_db(app_dir: &PathBuf) -> Result<Connection> {
     let _ = conn.execute("ALTER TABLE archives ADD COLUMN is_key_conclusion INTEGER DEFAULT 0", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_archives_demand  ON archives(demand_id)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_archives_keycon  ON archives(is_key_conclusion) WHERE is_key_conclusion = 1", []);
+
+    // 需求相关文档与聊天截图拆解分块表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS demand_doc_chunks (
+            id          TEXT PRIMARY KEY,
+            demand_id   TEXT NOT NULL,
+            archive_id  TEXT NOT NULL,
+            file_path   TEXT NOT NULL,
+            file_name   TEXT NOT NULL,
+            asset_type  TEXT NOT NULL DEFAULT 'document',
+            chunk_text  TEXT NOT NULL,
+            created_at  INTEGER NOT NULL
+        )",
+        [],
+    )?;
+
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_demand_chunks_did ON demand_doc_chunks(demand_id)", []);
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_demand_chunks_aid ON demand_doc_chunks(archive_id)", []);
+
+    // FTS5 引擎表 (用于文档正文与聊天截图 OCR 全文与模糊搜)
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS demand_doc_chunks_fts USING fts5(
+            chunk_id UNINDEXED, demand_id UNINDEXED, archive_id UNINDEXED, file_name UNINDEXED, asset_type UNINDEXED, chunk_text, tokenize='trigram'
+        )",
+        [],
+    )?;
 
     Ok(conn)
 }

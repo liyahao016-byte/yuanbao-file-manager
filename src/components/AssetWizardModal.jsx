@@ -120,6 +120,7 @@ export default function AssetWizardModal({ onClose, onTaskCreated }) {
 
     try {
       if (window.__TAURI_INTERNALS__) {
+        // 1. 创建资产沉淀任务记录
         const task = await invoke('create_asset_task', {
           name: taskName,
           workspacePath,
@@ -132,19 +133,22 @@ export default function AssetWizardModal({ onClose, onTaskCreated }) {
           aiDescription,
         });
 
-        // 触发并发向量扫描
-        await invoke('scan_asset_task', { taskId: task.id });
+        // 2. 闭环修复：立即通知父组件关闭 Modal 并切至 Dashboard！
         onTaskCreated(task);
+
+        // 3. 后台触发并发向量与规则扫描
+        invoke('scan_asset_task', { taskId: task.id }).catch((err) => {
+          console.warn('后台资产扫描完成/异常:', err);
+        });
       } else {
         // Mock 创建
-        setTimeout(() => {
-          onTaskCreated({
-            id: 'mock_task_1',
-            name: taskName,
-            workspacePath: workspacePath || '/Users/demo/Projects/QQBrowser',
-            stats: { totalFiles: 86, assetCount: 18, noiseCount: 52, pendingCount: 16, noiseBytes: 24500000 },
-          });
-        }, 1200);
+        const mockTask = {
+          id: 'mock_task_1',
+          name: taskName,
+          workspacePath: workspacePath || '/Users/demo/Projects/QQBrowser',
+          stats: { totalFiles: 86, assetCount: 18, noiseCount: 52, pendingCount: 16, noiseBytes: 24500000 },
+        };
+        onTaskCreated(mockTask);
       }
     } catch (err) {
       setError(typeof err === 'string' ? err : '创建沉淀任务失败');

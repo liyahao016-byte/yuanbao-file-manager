@@ -12,7 +12,7 @@
 //!   - build_md_block     : 拼装 Markdown 归档段落
 //!   - parse_md_blocks    : 反解析 daily note 中的所有归档段落（供 S5 重建索引用）
 
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Local, NaiveDate};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -83,6 +83,8 @@ pub struct ArchiveInput {
     pub attachments: Option<String>,
     #[serde(rename = "isKeyConclusion")]
     pub is_key_conclusion: Option<bool>,
+    #[serde(rename = "demandStatus")]
+    pub demand_status: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -353,14 +355,67 @@ pub async fn archive_file(
         )
         .map_err(|e| format!("写入 archives 表失败: {}", e))?;
 
-        // Insert linked files
-        if let Some(ref files) = input.linked_files {
-            for file_path in files {
-                let _ = conn.execute(
-                    "INSERT OR IGNORE INTO archive_files (archive_id, file_path) VALUES (?1, ?2)",
-                    rusqlite::params![archive_id, file_path],
-                );
+        // Update FTS5 trigram table for nodes
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO demand_nodes_fts (archive_id, demand_id, title, content, blocker, next_action) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                archive_id,
+                input.demand_id,
+                input.title,
+                input.output,
+                input.blocker,
+                input.next_action,
+            ],
+        );
+
+        // 如果关联了 demand_id，自动更新需求的 status / next_step / blocker / updated_at
+        if let Some(ref did) = input.demand_id {
+            if !did.is_empty() {
+                if let Some(ref st) = input.demand_status {
+                    if st == "done" || st == "completed" {
+                        let _ = conn.execute(
+                            "UPDATE demands SET status = 'done', next_step = NULL, blocker = COALESCE(?1, blocker), updated_at = ?2 WHERE id = ?3",
+                            rusqlite::params![input.blocker, created_at, did],
+                        );
+                    } else if st == "hold" {
+                        let _ = conn.execute(
+                            "UPDATE demands SET status = 'hold', blocker = COALESCE(?1, blocker), updated_at = ?2 WHERE id = ?3",
+                            rusqlite::params![input.blocker, created_at, did],
+                        );
+                    } else if st == "active" || st == "doing" {
+                        let _ = conn.execute(
+                            "UPDATE demands SET status = 'doing', blocker = COALESCE(?1, blocker), updated_at = ?2 WHERE id = ?3",
+                            rusqlite::params![input.blocker, created_at, did],
+                        );
+                    }
+                }
+
+                if let Some(ref na) = input.next_action {
+                    if !na.trim().is_empty() {
+                        let _ = conn.execute(
+                            "UPDATE demands SET next_step = ?1, blocker = COALESCE(?2, blocker), updated_at = ?3 WHERE id = ?4",
+                            rusqlite::params![na.trim(), input.blocker, created_at, did],
+                        );
+                    }
+                } else if input.blocker.is_some() {
+                    let _ = conn.execute(
+                        "UPDATE demands SET blocker = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![input.blocker, created_at, did],
+                    );
+                }
             }
+        }
+
+        // Insert linked files & index/store attachments in demand folder
+        if let Some(ref files) = input.linked_files {
+            let _ = index_archive_attachments_internal(
+                &conn,
+                &archive_id,
+                input.demand_id.as_deref(),
+                files,
+                created_at,
+                input.custom_vault_path.as_deref(),
+            );
         }
     }
 
@@ -2397,6 +2452,8 @@ pub async fn update_archive(
     blocker: Option<String>,
     next_action: Option<String>,
     tags: Option<Vec<String>>,
+    linked_files: Option<Vec<String>>,
+    node_type: Option<String>,
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| format!("DB lock error: {}", e))?;
 
@@ -2451,17 +2508,62 @@ pub async fn update_archive(
         sets.push("tags = ?".to_string());
         params.push(Box::new(tags_str));
     }
-
-    if sets.is_empty() {
-        return Ok(()); // 没有要更新的字段
+    if let Some(v) = node_type {
+        sets.push("node_type = ?".to_string());
+        params.push(Box::new(v));
     }
 
-    let sql = format!("UPDATE archives SET {} WHERE id = ?", sets.join(", "));
-    params.push(Box::new(archive_id));
+    if !sets.is_empty() {
+        let sql = format!("UPDATE archives SET {} WHERE id = ?", sets.join(", "));
+        params.push(Box::new(archive_id.clone()));
 
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    conn.execute(&sql, param_refs.as_slice())
-        .map_err(|e| format!("更新归档失败: {}", e))?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&sql, param_refs.as_slice())
+            .map_err(|e| format!("更新归档失败: {}", e))?;
+    }
+
+    // 处理关联文件/附件的改动与持久化拷贝
+    if let Some(ref files) = linked_files {
+        let demand_id: Option<String> = conn
+            .query_row(
+                "SELECT demand_id FROM archives WHERE id = ?1",
+                rusqlite::params![archive_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+
+        let now = chrono::Local::now().timestamp();
+        let _ = conn.execute("DELETE FROM archive_files WHERE archive_id = ?1", rusqlite::params![archive_id]);
+        let _ = conn.execute("DELETE FROM demand_doc_chunks WHERE archive_id = ?1", rusqlite::params![archive_id]);
+        let _ = conn.execute("DELETE FROM demand_doc_chunks_fts WHERE archive_id = ?1", rusqlite::params![archive_id]);
+
+        let _ = index_archive_attachments_internal(
+            &conn,
+            &archive_id,
+            demand_id.as_deref(),
+            files,
+            now,
+            None,
+        );
+    }
+
+    // 如果此归档关联了 demand_id，且更新了 next_action 或 blocker，同步更新 demands.next_step / blocker / updated_at
+    if let Ok((demand_id, current_next_action, current_blocker)) = conn.query_row::<(Option<String>, Option<String>, Option<String>), _, _>(
+        "SELECT demand_id, next_action, blocker FROM archives WHERE id = ?1",
+        rusqlite::params![archive_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ) {
+        if let Some(did) = demand_id {
+            if !did.is_empty() {
+                let now = chrono::Local::now().timestamp();
+                let _ = conn.execute(
+                    "UPDATE demands SET next_step = ?1, blocker = ?2, updated_at = ?3 WHERE id = ?4",
+                    rusqlite::params![current_next_action, current_blocker, now, did],
+                );
+            }
+        }
+    }
 
     Ok(())
 }
@@ -3129,7 +3231,63 @@ pub async fn update_demand(
     conn.execute(&sql, params_ref.as_slice())
         .map_err(|e| format!("更新需求失败: {}", e))?;
 
+    if let Some(ref new_t) = input.title {
+        let _ = conn.execute(
+            "UPDATE archives SET project = ?1 WHERE demand_id = ?2",
+            rusqlite::params![new_t, input.id],
+        );
+    }
+
     Ok(input.id)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DemandNodeMeta {
+    pub tags: Vec<String>,
+    pub custom_vault_path: Option<String>,
+}
+
+/// 获取某个需求最新节点的元数据 (继承标签与归档路径)
+#[tauri::command]
+pub async fn get_latest_demand_node_meta(
+    demand_id: String,
+    state: State<'_, AppState>,
+) -> Result<DemandNodeMeta, String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock error: {}", e))?;
+
+    let mut stmt = conn
+        .prepare("SELECT tags, md_path FROM archives WHERE demand_id = ?1 ORDER BY created_at DESC LIMIT 1")
+        .map_err(|e| e.to_string())?;
+
+    let mut rows = stmt.query(rusqlite::params![demand_id]).map_err(|e| e.to_string())?;
+
+    if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let tags_raw: Option<String> = row.get(0).ok();
+        let md_path: Option<String> = row.get(1).ok();
+
+        let tags: Vec<String> = tags_raw
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let custom_vault_path = md_path.and_then(|p| {
+            std::path::Path::new(&p)
+                .parent()
+                .map(|parent| parent.to_string_lossy().to_string())
+        });
+
+        Ok(DemandNodeMeta {
+            tags,
+            custom_vault_path,
+        })
+    } else {
+        Ok(DemandNodeMeta {
+            tags: vec![],
+            custom_vault_path: None,
+        })
+    }
 }
 
 // ── Tauri Command: query_demands ─────────────────────────────────
@@ -3242,7 +3400,7 @@ pub async fn delete_demand(
 pub struct DocLinkInput {
     #[serde(rename = "demandId")]
     pub demand_id: String,
-    pub name: String,
+    pub name: Option<String>,
     pub url: String,
     #[serde(rename = "docType")]
     pub doc_type: Option<String>,
@@ -3250,29 +3408,51 @@ pub struct DocLinkInput {
 
 #[tauri::command]
 pub async fn add_demand_doc_link(
-    input: DocLinkInput,
+    demand_id: Option<String>,
+    link: Option<String>,
+    url: Option<String>,
+    name: Option<String>,
+    doc_type: Option<String>,
+    input: Option<DocLinkInput>,
     state: State<'_, AppState>,
 ) -> Result<DemandDocLink, String> {
+    let did = demand_id
+        .or_else(|| input.as_ref().map(|i| i.demand_id.clone()))
+        .ok_or_else(|| "缺失 demandId 参数".to_string())?;
+
+    let target_url = url
+        .or(link)
+        .or_else(|| input.as_ref().map(|i| i.url.clone()))
+        .ok_or_else(|| "缺失 url 链接参数".to_string())?;
+
+    let link_name = name
+        .or_else(|| input.as_ref().and_then(|i| i.name.clone()))
+        .unwrap_or_else(|| target_url.clone());
+
+    let dtype = doc_type
+        .or_else(|| input.as_ref().and_then(|i| i.doc_type.clone()))
+        .unwrap_or_else(|| "link".to_string());
+
     let now = Local::now().timestamp();
     let id = {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
-        format!("{}|{}|{}", input.demand_id, input.url, now).hash(&mut hasher);
+        format!("{}|{}|{}", did, target_url, now).hash(&mut hasher);
         format!("dl_{:016x}", hasher.finish())
     };
 
     let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
     conn.execute(
         "INSERT INTO demand_doc_links (id, demand_id, name, url, doc_type, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
-        rusqlite::params![id, input.demand_id, input.name, input.url, input.doc_type.as_deref().unwrap_or("link"), now],
+        rusqlite::params![id, did, link_name, target_url, dtype, now],
     ).map_err(|e| format!("添加文档链接失败: {}", e))?;
 
     Ok(DemandDocLink {
         id,
-        name: input.name,
-        url: input.url,
-        doc_type: input.doc_type.or(Some("link".to_string())),
+        name: link_name,
+        url: target_url,
+        doc_type: Some(dtype),
         created_at: Some(now),
     })
 }
@@ -3281,13 +3461,27 @@ pub async fn add_demand_doc_link(
 
 #[tauri::command]
 pub async fn remove_demand_doc_link(
-    id: String,
+    id: Option<String>,
+    demand_id: Option<String>,
+    link: Option<String>,
+    url: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
-    conn.execute("DELETE FROM demand_doc_links WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| format!("删除文档链接失败: {}", e))?;
-    Ok(id)
+    if let Some(ref link_id) = id {
+        if !link_id.is_empty() {
+            let _ = conn.execute("DELETE FROM demand_doc_links WHERE id = ?1", rusqlite::params![link_id]);
+            return Ok(link_id.clone());
+        }
+    }
+    let target_url = url.or(link).unwrap_or_default();
+    if let Some(ref did) = demand_id {
+        let _ = conn.execute(
+            "DELETE FROM demand_doc_links WHERE demand_id = ?1 AND url = ?2",
+            rusqlite::params![did, target_url],
+        );
+    }
+    Ok("ok".to_string())
 }
 
 // ── Tauri Command: query_demand_nodes ────────────────────────────
@@ -3404,4 +3598,1079 @@ pub async fn migrate_projects_to_demands(
         "projectCount": projects.len(),
         "migratedArchives": migrated,
     }))
+}
+
+// ── Tauri Command: query_demand_todos ─────────────────────────────
+
+// ── Tauri Command: query_demand_todos & custom_todos ──────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DemandTodoItem {
+    pub id: String,
+    pub demand_id: Option<String>,
+    pub demand_title: String,
+    pub priority: Option<String>,
+    pub phase: Option<String>,
+    pub status: String,
+    pub next_action: Option<String>,
+    pub target_date: Option<String>,
+    pub blocker: Option<String>,
+    pub ddl_status: String, // "OVERDUE", "TODAY", "UPCOMING", "NORMAL"
+    pub days_left_text: String, // "已逾期 2 天", "今天到期", "3 天后"
+    pub days_left_num: i64,
+    pub owner: Option<String>,
+    pub remind_at: Option<String>,
+    pub is_custom: bool,
+    pub last_updated_at: i64,
+}
+
+fn calc_days_left(target_date_str: Option<&str>, today_date: &NaiveDate) -> (String, String, i64) {
+    if let Some(d_str) = target_date_str {
+        if let Ok(d) = NaiveDate::parse_from_str(d_str.trim(), "%Y-%m-%d") {
+            let diff = (d - *today_date).num_days();
+            let (ddl_status, text) = if diff < 0 {
+                ("OVERDUE".to_string(), format!("已逾期 {} 天", diff.abs()))
+            } else if diff == 0 {
+                ("TODAY".to_string(), "今天到期".to_string())
+            } else if diff == 1 {
+                ("TODAY".to_string(), "明天到期".to_string())
+            } else if diff == 2 {
+                ("UPCOMING".to_string(), "后天到期".to_string())
+            } else {
+                ("UPCOMING".to_string(), format!("{} 天后", diff))
+            };
+            return (ddl_status, text, diff);
+        }
+    }
+    ("NORMAL".to_string(), "未定日".to_string(), 9999)
+}
+
+#[tauri::command]
+pub async fn query_demand_todos(
+    state: State<'_, AppState>,
+) -> Result<Vec<DemandTodoItem>, String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let today = Local::now().date_naive();
+    let mut items = Vec::new();
+
+    // 1. 需求跟进待办：优先读取 demands.next_step；若为空则自动补位回溯 archives 表中最新的未完成下一步待办
+    let mut stmt = conn.prepare(
+        "SELECT 
+            d.id, d.title, d.priority, d.phase, d.status,
+            COALESCE(
+                NULLIF(trim(d.next_step), ''),
+                (
+                    SELECT trim(a.next_action)
+                    FROM archives a
+                    WHERE a.demand_id = d.id
+                      AND a.next_action IS NOT NULL
+                      AND trim(a.next_action) != ''
+                      AND NOT EXISTS (
+                          SELECT 1 FROM archives c
+                          WHERE c.demand_id = d.id
+                            AND c.node_type = 'completion'
+                            AND c.created_at >= a.created_at
+                      )
+                    ORDER BY a.created_at DESC
+                    LIMIT 1
+                )
+            ) as todo_action,
+            COALESCE(d.target_date, d.online_date, d.expected_merge_date) as ddl_date,
+            d.blocker as current_blocker,
+            d.updated_at,
+            d.owner,
+            d.remind_at
+         FROM demands d
+         WHERE todo_action IS NOT NULL AND trim(todo_action) != ''"
+    ).map_err(|e| format!("Prepare query_demand_todos: {}", e))?;
+
+    let demand_items = stmt.query_map([], |row| {
+        let demand_id: String = row.get(0)?;
+        let demand_title: String = row.get(1)?;
+        let priority: Option<String> = row.get(2)?;
+        let phase: Option<String> = row.get(3)?;
+        let status: String = row.get(4)?;
+        let next_action: Option<String> = row.get(5)?;
+        let target_date: Option<String> = row.get(6)?;
+        let blocker: Option<String> = row.get(7)?;
+        let updated_at: i64 = row.get(8)?;
+        let owner: Option<String> = row.get(9)?;
+        let remind_at: Option<String> = row.get(10)?;
+
+        let (ddl_status, days_left_text, days_left_num) = calc_days_left(target_date.as_deref(), &today);
+
+        Ok(DemandTodoItem {
+            id: format!("dmd_{}", demand_id),
+            demand_id: Some(demand_id),
+            demand_title,
+            priority,
+            phase,
+            status,
+            next_action,
+            target_date,
+            blocker,
+            ddl_status,
+            days_left_text,
+            days_left_num,
+            owner,
+            remind_at,
+            is_custom: false,
+            last_updated_at: updated_at,
+        })
+    }).map_err(|e| format!("Map query_demand_todos: {}", e))?
+    .filter_map(|r| r.ok());
+
+    items.extend(demand_items);
+
+    // 2. 自由自定义待办
+    let mut stmt_custom = conn.prepare(
+        "SELECT id, title, project_name, priority, target_date, updated_at, owner, remind_at
+         FROM custom_todos
+         WHERE is_completed = 0"
+    ).map_err(|e| format!("Prepare custom_todos: {}", e))?;
+
+    let custom_items = stmt_custom.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let project_name: Option<String> = row.get(2)?;
+        let priority: Option<String> = row.get(3)?;
+        let target_date: Option<String> = row.get(4)?;
+        let updated_at: i64 = row.get(5)?;
+        let owner: Option<String> = row.get(6)?;
+        let remind_at: Option<String> = row.get(7)?;
+
+        let (ddl_status, days_left_text, days_left_num) = calc_days_left(target_date.as_deref(), &today);
+
+        Ok(DemandTodoItem {
+            id: id.clone(),
+            demand_id: None,
+            demand_title: project_name.unwrap_or_else(|| "独立待办".to_string()),
+            priority,
+            phase: Some("个人待办".to_string()),
+            status: "active".to_string(),
+            next_action: Some(title),
+            target_date,
+            blocker: None,
+            ddl_status,
+            days_left_text,
+            days_left_num,
+            owner,
+            remind_at,
+            is_custom: true,
+            last_updated_at: updated_at,
+        })
+    }).map_err(|e| format!("Map custom_todos: {}", e))?
+    .filter_map(|r| r.ok());
+
+    items.extend(custom_items);
+
+    // 排序：逾期最紧急在前，然后今天，最后按天数正序
+    items.sort_by(|a, b| a.days_left_num.cmp(&b.days_left_num));
+
+    Ok(items)
+}
+
+#[tauri::command]
+pub async fn create_custom_todo(
+    title: String,
+    project_name: Option<String>,
+    priority: Option<String>,
+    target_date: String,
+    owner: Option<String>,
+    remind_at: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let now = Local::now().timestamp();
+    let id = format!("cst_{}", now);
+
+    conn.execute(
+        "INSERT INTO custom_todos (id, title, project_name, priority, target_date, owner, remind_at, is_completed, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)",
+        rusqlite::params![
+            id,
+            title,
+            project_name.as_deref().unwrap_or("独立待办"),
+            priority.as_deref().unwrap_or("P1"),
+            target_date,
+            owner,
+            remind_at,
+            now,
+        ],
+    ).map_err(|e| format!("创建自定义待办失败: {}", e))?;
+
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn update_todo_date(
+    id: String,
+    demand_id: Option<String>,
+    is_custom: bool,
+    new_date: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let now = Local::now().timestamp();
+
+    if is_custom {
+        conn.execute(
+            "UPDATE custom_todos SET target_date = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![new_date, now, id],
+        ).map_err(|e| format!("更新自定义待办日期失败: {}", e))?;
+    } else if let Some(did) = demand_id {
+        conn.execute(
+            "UPDATE demands SET target_date = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![new_date, now, did],
+        ).map_err(|e| format!("更新需求日期失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_todo_item(
+    id: String,
+    demand_id: Option<String>,
+    is_custom: bool,
+    title: String,
+    project_name: Option<String>,
+    priority: Option<String>,
+    target_date: Option<String>,
+    owner: Option<String>,
+    remind_at: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let now = Local::now().timestamp();
+
+    if is_custom {
+        conn.execute(
+            "UPDATE custom_todos SET title = ?1, project_name = ?2, priority = ?3, target_date = ?4, owner = ?5, remind_at = ?6, updated_at = ?7 WHERE id = ?8",
+            rusqlite::params![
+                title,
+                project_name.as_deref().unwrap_or("独立待办"),
+                priority.as_deref().unwrap_or("P1"),
+                target_date.as_deref().unwrap_or(""),
+                owner,
+                remind_at,
+                now,
+                id
+            ],
+        ).map_err(|e| format!("更新自定义待办失败: {}", e))?;
+    } else if let Some(did) = demand_id {
+        conn.execute(
+            "UPDATE demands SET next_step = ?1, title = COALESCE(?2, title), priority = COALESCE(?3, priority), target_date = ?4, owner = ?5, remind_at = ?6, updated_at = ?7 WHERE id = ?8",
+            rusqlite::params![
+                title,
+                project_name,
+                priority,
+                target_date,
+                owner,
+                remind_at,
+                now,
+                did
+            ],
+        ).map_err(|e| format!("更新需求待办失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_todo_item(
+    id: String,
+    demand_id: Option<String>,
+    is_custom: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let now = Local::now().timestamp();
+
+    if is_custom {
+        conn.execute("DELETE FROM custom_todos WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| format!("删除自定义待办失败: {}", e))?;
+    } else if let Some(did) = demand_id {
+        conn.execute(
+            "UPDATE demands SET next_step = NULL, updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![now, did],
+        ).map_err(|e| format!("清空需求待办失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn complete_custom_todo(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let now = Local::now().timestamp();
+
+    conn.execute(
+        "UPDATE custom_todos SET is_completed = 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, id],
+    ).map_err(|e| format!("完成自定义待办失败: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn complete_demand_todo(
+    demand_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let now = Local::now();
+    let created_at = now.timestamp();
+    let date_str = now.format("%Y-%m-%d").to_string();
+    let time_str = now.format("%H:%M").to_string();
+
+    // 1. 获取需求当前 next_step 和 title
+    let (demand_title, next_step): (String, Option<String>) = conn.query_row(
+        "SELECT title, next_step FROM demands WHERE id = ?1",
+        rusqlite::params![demand_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|e| format!("读取需求失败: {}", e))?;
+
+    let todo_text = next_step.unwrap_or_else(|| "节点待办".to_string());
+
+    // 2. 自动添加一条完成节点归档 (指定 md_path 满足 NOT NULL 约束)
+    let archive_id = generate_archive_id(&date_str, &time_str, &format!("完成待办: {}", todo_text));
+    conn.execute(
+        "INSERT OR REPLACE INTO archives (id, date, time, title, project, output, demand_id, node_type, is_key_conclusion, created_at, md_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'completion', 0, ?8, '')",
+        rusqlite::params![
+            archive_id,
+            date_str,
+            time_str,
+            format!("完成待办: {}", todo_text),
+            demand_title,
+            format!("手动点击归档完成待办事项：{}", todo_text),
+            demand_id,
+            created_at,
+        ],
+    ).map_err(|e| format!("插入归档失败: {}", e))?;
+
+    // 3. 清空需求表的 next_step 及历史节点的 next_action
+    conn.execute(
+        "UPDATE demands SET next_step = NULL, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![created_at, demand_id],
+    ).map_err(|e| format!("更新需求待办状态失败: {}", e))?;
+
+    let _ = conn.execute(
+        "UPDATE archives SET next_action = NULL WHERE demand_id = ?1 AND id != ?2",
+        rusqlite::params![demand_id, archive_id],
+    );
+
+    Ok(())
+}
+
+// ── Tauri Command: query_completed_todos ──────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompletedTodoItem {
+    pub id: String,
+    pub demand_id: Option<String>,
+    pub title: String,
+    pub project_name: String,
+    pub completed_at: String,
+    pub is_custom: bool,
+}
+
+#[tauri::command]
+pub async fn query_completed_todos(
+    state: State<'_, AppState>,
+) -> Result<Vec<CompletedTodoItem>, String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let mut items = Vec::new();
+
+    // 1. 已完成的独立自定义待办
+    let mut stmt1 = conn.prepare(
+        "SELECT id, title, project_name, COALESCE(updated_at, created_at, 0)
+         FROM custom_todos
+         WHERE is_completed = 1
+         ORDER BY updated_at DESC
+         LIMIT 100"
+    ).map_err(|e| format!("Prepare custom completed: {}", e))?;
+
+    let custom_rows = stmt1.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let project_name: Option<String> = row.get(2)?;
+        let updated_at: i64 = row.get(3)?;
+        let date_str = if updated_at > 0 {
+            chrono::DateTime::from_timestamp(updated_at, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "".to_string())
+        } else {
+            Local::now().format("%Y-%m-%d %H:%M").to_string()
+        };
+
+        Ok(CompletedTodoItem {
+            id,
+            demand_id: None,
+            title,
+            project_name: project_name.unwrap_or_else(|| "独立待办".to_string()),
+            completed_at: date_str,
+            is_custom: true,
+        })
+    }).map_err(|e| format!("Map custom completed: {}", e))?;
+
+    for r in custom_rows.flatten() {
+        items.push(r);
+    }
+
+    // 2. 已完成的需求归档节点 (node_type = 'completion' 或 title 包含完成待办)
+    let mut stmt2 = conn.prepare(
+        "SELECT a.id, a.demand_id, a.title, a.project, a.created_at
+         FROM archives a
+         WHERE a.node_type = 'completion' OR a.title LIKE '%完成待办%'
+         ORDER BY a.created_at DESC
+         LIMIT 100"
+    ).map_err(|e| format!("Prepare archive completed: {}", e))?;
+
+    let archive_rows = stmt2.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let demand_id: Option<String> = row.get(1)?;
+        let title: String = row.get(2)?;
+        let project: Option<String> = row.get(3)?;
+        let created_at: i64 = row.get(4)?;
+        let date_str = if created_at > 0 {
+            chrono::DateTime::from_timestamp(created_at, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "".to_string())
+        } else {
+            Local::now().format("%Y-%m-%d %H:%M").to_string()
+        };
+
+        let mut clean_title = title
+            .trim_start_matches("【完成待办】")
+            .trim_start_matches("完成待办:")
+            .trim_start_matches("完成待办：")
+            .trim()
+            .to_string();
+
+        if clean_title.starts_with('[') {
+            if let Some(pos) = clean_title.find("] ") {
+                clean_title = clean_title[pos + 2..].to_string();
+            } else if let Some(pos) = clean_title.find(']') {
+                clean_title = clean_title[pos + 1..].to_string();
+            }
+        }
+
+        Ok(CompletedTodoItem {
+            id,
+            demand_id,
+            title: clean_title,
+            project_name: project.unwrap_or_else(|| "需求归档".to_string()),
+            completed_at: date_str,
+            is_custom: false,
+        })
+    }).map_err(|e| format!("Map archive completed: {}", e))?;
+
+    for r in archive_rows.flatten() {
+        if !items.iter().any(|item| item.id == r.id) {
+            results_push_if_new(&mut items, r);
+        }
+    }
+
+    items.sort_by(|a, b| b.completed_at.cmp(&a.completed_at));
+
+    Ok(items)
+}
+
+fn results_push_if_new(items: &mut Vec<CompletedTodoItem>, item: CompletedTodoItem) {
+    if !items.iter().any(|i| i.id == item.id) {
+        items.push(item);
+    }
+}
+
+// ── Tauri Command: delete_completed_todo ──────────────────────────
+
+#[tauri::command]
+pub async fn delete_completed_todo(
+    id: String,
+    is_custom: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+
+    if is_custom {
+        conn.execute("DELETE FROM custom_todos WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| format!("删除自定义待办归档失败: {}", e))?;
+    } else {
+        conn.execute("DELETE FROM archives WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| format!("删除需求归档失败: {}", e))?;
+        let _ = conn.execute("DELETE FROM demand_nodes_fts WHERE archive_id = ?1", rusqlite::params![id]);
+        let _ = conn.execute("DELETE FROM archive_files WHERE archive_id = ?1", rusqlite::params![id]);
+    }
+
+    Ok(())
+}
+
+// ── Tauri Command: search_demands_fuzzy ───────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DemandFuzzySearchResult {
+    pub id: String,
+    pub demand_id: Option<String>,
+    pub title: String,
+    pub content: Option<String>,
+    pub blocker: Option<String>,
+    pub next_action: Option<String>,
+    pub node_type: Option<String>,
+    pub phase: Option<String>,
+    pub is_key_conclusion: bool,
+    pub date: String,
+    pub match_source: String,
+}
+
+#[tauri::command]
+pub async fn search_demands_fuzzy(
+    query: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<DemandFuzzySearchResult>, String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let q_clean = query.trim().to_string();
+    if q_clean.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let pattern = format!("%{}%", q_clean);
+    let mut results = Vec::new();
+
+    // 1. 节点按模糊/FTS5 匹配
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.demand_id, a.title, a.output, a.blocker, a.next_action, a.node_type, d.phase, a.is_key_conclusion, a.date
+         FROM archives a
+         LEFT JOIN demands d ON a.demand_id = d.id
+         WHERE a.title LIKE ?1 OR a.output LIKE ?1 OR a.blocker LIKE ?1 OR a.next_action LIKE ?1 OR a.tags LIKE ?1
+         ORDER BY a.is_key_conclusion DESC, a.created_at DESC
+         LIMIT 50"
+    ).map_err(|e| format!("Prepare search_demands_fuzzy: {}", e))?;
+
+    let archive_rows = stmt.query_map(rusqlite::params![pattern], |row| {
+        Ok(DemandFuzzySearchResult {
+            id: row.get(0)?,
+            demand_id: row.get(1)?,
+            title: row.get(2)?,
+            content: row.get(3)?,
+            blocker: row.get(4)?,
+            next_action: row.get(5)?,
+            node_type: row.get(6)?,
+            phase: row.get(7)?,
+            is_key_conclusion: row.get::<_, i32>(8).unwrap_or(0) == 1,
+            date: row.get(9)?,
+            match_source: "node".to_string(),
+        })
+    }).map_err(|e| format!("Query search_demands_fuzzy: {}", e))?;
+
+    for r in archive_rows.flatten() {
+        results.push(r);
+    }
+
+    // 2. 需求维度匹配
+    let mut stmt2 = conn.prepare(
+        "SELECT id, title, description, blocker, next_step, phase, updated_at
+         FROM demands
+         WHERE title LIKE ?1 OR description LIKE ?1 OR blocker LIKE ?1 OR next_step LIKE ?1 OR tags LIKE ?1
+         LIMIT 20"
+    ).map_err(|e| format!("Prepare demand search: {}", e))?;
+
+    let demand_rows = stmt2.query_map(rusqlite::params![pattern], |row| {
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let description: Option<String> = row.get(2)?;
+        let blocker: Option<String> = row.get(3)?;
+        let next_step: Option<String> = row.get(4)?;
+        let phase: Option<String> = row.get(5)?;
+        let updated_at: i64 = row.get(6)?;
+        let date_str = chrono::DateTime::from_timestamp(updated_at, 0)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "".to_string());
+
+        Ok(DemandFuzzySearchResult {
+            id: id.clone(),
+            demand_id: Some(id),
+            title,
+            content: description,
+            blocker,
+            next_action: next_step,
+            node_type: Some("demand".to_string()),
+            phase,
+            is_key_conclusion: false,
+            date: date_str,
+            match_source: "demand".to_string(),
+        })
+    }).map_err(|e| format!("Query demand search: {}", e))?;
+
+    for r in demand_rows.flatten() {
+        if !results.iter().any(|item| item.id == r.id) {
+            results.push(r);
+        }
+    }
+
+    Ok(results)
+}
+
+// ── 内部辅助：自动保存文档/截图至需求目录并拆解 OCR 建立索引 ───────
+
+fn resolve_vault_base_path(conn: &Connection, custom_path: Option<&str>) -> PathBuf {
+    if let Some(cp) = custom_path {
+        if !cp.trim().is_empty() {
+            return PathBuf::from(cp);
+        }
+    }
+    let db_path: Option<String> = conn
+        .query_row("SELECT vault_path FROM archive_config LIMIT 1", [], |row| row.get(0))
+        .ok()
+        .flatten();
+    if let Some(vp) = db_path {
+        if !vp.trim().is_empty() {
+            return PathBuf::from(vp);
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        let p = home.join(".gemini").join("antigravity-ide").join("Vault");
+        let _ = fs::create_dir_all(&p);
+        return p;
+    }
+    let mut dir = std::env::current_dir().unwrap_or_default();
+    dir.push("Vault");
+    dir
+}
+
+pub fn index_archive_attachments_internal(
+    conn: &Connection,
+    archive_id: &str,
+    demand_id: Option<&str>,
+    files: &[String],
+    created_at: i64,
+    custom_vault_path: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let mut saved_paths = Vec::new();
+    if files.is_empty() {
+        return Ok(saved_paths);
+    }
+
+    let vault_base = resolve_vault_base_path(conn, custom_vault_path);
+
+    // 计算存储目标目录（无 demand_id 时存入 Attachments/YYYY-MM/）
+    let dest_dir = if let Some(did) = demand_id {
+        if !did.trim().is_empty() {
+            let demand_title: String = conn
+                .query_row(
+                    "SELECT title FROM demands WHERE id = ?1",
+                    rusqlite::params![did],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "Demand".to_string());
+
+            let clean_title: String = demand_title
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                .collect();
+            let folder_name = format!("{}_{}", did, clean_title);
+            vault_base.join("Demands").join(folder_name).join("docs")
+        } else {
+            let month_str = chrono::Local::now().format("%Y-%m").to_string();
+            vault_base.join("Attachments").join(month_str)
+        }
+    } else {
+        let month_str = chrono::Local::now().format("%Y-%m").to_string();
+        vault_base.join("Attachments").join(month_str)
+    };
+
+    let _ = fs::create_dir_all(&dest_dir);
+
+    for src_path_str in files {
+        let src_path = Path::new(src_path_str);
+        if !src_path.exists() {
+            continue;
+        }
+
+        let file_name = src_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let target_file = dest_dir.join(&file_name);
+        let final_path = if src_path != target_file {
+            let _ = fs::copy(src_path, &target_file);
+            target_file.to_string_lossy().to_string()
+        } else {
+            src_path_str.to_string()
+        };
+
+        saved_paths.push(final_path.clone());
+
+        // 写入 archive_files 表
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO archive_files (archive_id, file_path) VALUES (?1, ?2)",
+            rusqlite::params![archive_id, final_path],
+        );
+
+        // 调用 file_parser 进行文本提取及 Apple Vision OCR 识字
+        if let Ok(extracted) = crate::file_parser::read_text_snippet(&final_path, 10000) {
+            let trimmed = extracted.trim();
+            if !trimmed.is_empty() {
+                let ext = src_path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+
+                let asset_type = match ext.as_str() {
+                    "png" | "jpg" | "jpeg" | "webp" | "heic" | "gif" => "chat_screenshot",
+                    _ => "document",
+                };
+
+                let chunk_id = uuid::Uuid::new_v4().to_string();
+                let did_val = demand_id.unwrap_or("");
+
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO demand_doc_chunks (id, demand_id, archive_id, file_path, file_name, asset_type, chunk_text, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![chunk_id, did_val, archive_id, final_path, file_name, asset_type, trimmed, created_at],
+                );
+
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO demand_doc_chunks_fts (chunk_id, demand_id, archive_id, file_name, asset_type, chunk_text) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![chunk_id, did_val, archive_id, file_name, asset_type, trimmed],
+                );
+            }
+        }
+    }
+
+    // 重写并更新 archives 表中的 attachments 缓存字段，闭环存储路径
+    if let Ok(saved_json) = serde_json::to_string(&saved_paths) {
+        let _ = conn.execute(
+            "UPDATE archives SET attachments = ?1 WHERE id = ?2",
+            rusqlite::params![saved_json, archive_id],
+        );
+    }
+
+    Ok(saved_paths)
+}
+
+// ── 需求看板增强检索命令（支持需求、节点、文档与聊天截图 OCR）───────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnhancedDemandSearchResult {
+    pub id: String,                    // archive_id or demand_id or chunk_id
+    pub demand_id: Option<String>,
+    pub demand_title: String,
+    pub node_id: Option<String>,
+    pub node_title: Option<String>,
+    pub node_type: Option<String>,
+    pub phase: Option<String>,
+    pub match_type: String,           // "demand" | "node" | "document" | "chat_screenshot"
+    pub file_name: Option<String>,
+    pub file_path: Option<String>,
+    pub snippet: String,
+    pub is_key_conclusion: bool,
+    pub date: String,
+}
+
+#[tauri::command]
+// ── 智能自然语言分词与关键词提取 ──────────────────────────────────
+fn extract_natural_keywords(query: &str) -> Vec<String> {
+    let stopwords = [
+        "中", "哪些", "的", "了", "在", "是", "有", "请问", "关于", "如何", "怎么", "怎样", "什么是",
+        "吗", "呢", "吧", "啊", "这", "那", "具体", "所有", "一个", "什么", "哪些格式", "包含", "项目", "支持哪些",
+    ];
+    let mut clean = query.trim().to_string();
+    for sw in &stopwords {
+        clean = clean.replace(sw, " ");
+    }
+    let mut words: Vec<String> = clean
+        .split_whitespace()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // 针对常见技术词汇与专业领域词汇补充分词
+    let domain_terms = ["查看器", "格式", "图片", "需求", "分析", "跑数", "结论", "卡点", "上线", "方案", "问题", "支持", "版本", "导出", "保存"];
+    for term in &domain_terms {
+        if query.contains(term) && !words.iter().any(|w| w == term) {
+            words.push(term.to_string());
+        }
+    }
+
+    if words.is_empty() {
+        vec![query.trim().to_string()]
+    } else {
+        words.dedup();
+        words
+    }
+}
+
+// ── Tauri Command: search_demands_enhanced ───────────────────────
+
+#[tauri::command]
+pub async fn search_demands_enhanced(
+    query: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<EnhancedDemandSearchResult>, String> {
+    let conn = state.db.lock().map_err(|e| format!("DB lock: {}", e))?;
+    let q_clean = query.trim().to_string();
+    if q_clean.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let keywords = extract_natural_keywords(&q_clean);
+    let mut results = Vec::new();
+
+    // 优先尝试全句精准匹配，若结果较少则降级为多关键词拆解匹配
+    let kw_patterns: Vec<String> = keywords.iter().map(|k| format!("%{}%", k)).collect();
+    let main_pattern = format!("%{}%", q_clean);
+
+    // 1. 匹配文档正文 & 聊天截图 OCR 内容
+    let mut chunk_sql = String::from(
+        "SELECT c.id, c.demand_id, c.archive_id, c.file_path, c.file_name, c.asset_type, c.chunk_text,
+                d.title as demand_title, a.title as node_title, a.node_type, d.phase, a.is_key_conclusion, a.date
+         FROM demand_doc_chunks c
+         LEFT JOIN demands d ON c.demand_id = d.id
+         LEFT JOIN archives a ON c.archive_id = a.id
+         WHERE (c.chunk_text LIKE ?1 OR c.file_name LIKE ?1)"
+    );
+
+    // 添加多关键词 OR 条件
+    for i in 0..kw_patterns.len() {
+        chunk_sql.push_str(&format!(" OR c.chunk_text LIKE ?{} OR c.file_name LIKE ?{}", i + 2, i + 2));
+    }
+    chunk_sql.push_str(" ORDER BY c.created_at DESC LIMIT 30");
+
+    let mut params: Vec<&dyn rusqlite::types::ToSql> = vec![&main_pattern];
+    for pat in &kw_patterns {
+        params.push(pat);
+    }
+
+    if let Ok(mut chunk_stmt) = conn.prepare(&chunk_sql) {
+        if let Ok(chunk_rows) = chunk_stmt.query_map(params.as_slice(), |row| {
+            let chunk_text: String = row.get(6)?;
+            let file_name: String = row.get(4)?;
+            let asset_type: String = row.get(5)?;
+            let demand_title: String = row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "独立需求".to_string());
+            let node_title: Option<String> = row.get(8)?;
+
+            // 智能摘录包含任意关键词上下文 Snippet
+            let lower_text = chunk_text.to_lowercase();
+            let mut matched_kw = &q_clean;
+            for kw in &keywords {
+                if lower_text.contains(&kw.to_lowercase()) {
+                    matched_kw = kw;
+                    break;
+                }
+            }
+
+            let snippet = if let Some(idx) = lower_text.find(&matched_kw.to_lowercase()) {
+                let start = idx.saturating_sub(25);
+                let end = (idx + matched_kw.len() + 45).min(chunk_text.len());
+                let sub: String = chunk_text.chars().skip(start).take(end - start).collect();
+                if asset_type == "chat_screenshot" {
+                    format!("📝 OCR识别内容：“...{}...”", sub.replace('\n', " "))
+                } else {
+                    format!("📝 正文包含：“...{}...”", sub.replace('\n', " "))
+                }
+            } else {
+                if asset_type == "chat_screenshot" {
+                    format!("📝 匹配聊天截图: {}", file_name)
+                } else {
+                    format!("📝 匹配文档内容: {}", file_name)
+                }
+            };
+
+            Ok(EnhancedDemandSearchResult {
+                id: row.get(0)?,
+                demand_id: row.get(1)?,
+                demand_title,
+                node_id: row.get(2)?,
+                node_title,
+                node_type: row.get(9)?,
+                phase: row.get(10)?,
+                match_type: asset_type,
+                file_name: Some(file_name),
+                file_path: row.get(3)?,
+                snippet,
+                is_key_conclusion: row.get::<_, i32>(11).unwrap_or(0) == 1,
+                date: row.get::<_, Option<String>>(12)?.unwrap_or_default(),
+            })
+        }) {
+            for r in chunk_rows.flatten() {
+                results.push(r);
+            }
+        }
+    }
+
+    // 2. 匹配需求节点 (archives)
+    let mut node_sql = String::from(
+        "SELECT a.id, a.demand_id, d.title as demand_title, a.title as node_title, a.output, a.blocker, a.next_action, a.node_type, d.phase, a.is_key_conclusion, a.date
+         FROM archives a
+         LEFT JOIN demands d ON a.demand_id = d.id
+         WHERE (a.title LIKE ?1 OR a.output LIKE ?1 OR a.blocker LIKE ?1 OR a.next_action LIKE ?1 OR a.tags LIKE ?1)"
+    );
+    for i in 0..kw_patterns.len() {
+        node_sql.push_str(&format!(" OR a.title LIKE ?{p} OR a.output LIKE ?{p} OR a.blocker LIKE ?{p} OR a.next_action LIKE ?{p} OR a.tags LIKE ?{p}", p = i + 2));
+    }
+    node_sql.push_str(" ORDER BY a.is_key_conclusion DESC, a.created_at DESC LIMIT 40");
+
+    if let Ok(mut node_stmt) = conn.prepare(&node_sql) {
+        if let Ok(node_rows) = node_stmt.query_map(params.as_slice(), |row| {
+            let title: String = row.get(3)?;
+            let output: Option<String> = row.get(4)?;
+            let blocker: Option<String> = row.get(5)?;
+            let next_action: Option<String> = row.get(6)?;
+            let demand_title: String = row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "独立需求".to_string());
+
+            let mut target_text = output.as_deref().unwrap_or(&title);
+            if let Some(ref b) = blocker {
+                if keywords.iter().any(|k| b.to_lowercase().contains(&k.to_lowercase())) {
+                    target_text = b.as_str();
+                }
+            }
+            if let Some(ref n) = next_action {
+                if keywords.iter().any(|k| n.to_lowercase().contains(&k.to_lowercase())) {
+                    target_text = n.as_str();
+                }
+            }
+
+            let snippet = format!("📝 记录: {}", target_text);
+
+            Ok(EnhancedDemandSearchResult {
+                id: row.get(0)?,
+                demand_id: row.get(1)?,
+                demand_title,
+                node_id: row.get(0)?,
+                node_title: Some(title),
+                node_type: row.get(7)?,
+                phase: row.get(8)?,
+                match_type: "node".to_string(),
+                file_name: None,
+                file_path: None,
+                snippet,
+                is_key_conclusion: row.get::<_, i32>(9).unwrap_or(0) == 1,
+                date: row.get(10)?,
+            })
+        }) {
+            for r in node_rows.flatten() {
+                if !results.iter().any(|item| item.node_id == r.node_id && item.match_type == "node") {
+                    results.push(r);
+                }
+            }
+        }
+    }
+
+    // 3. 匹配需求本级 (demands)
+    let mut demand_sql = String::from(
+        "SELECT id, title, description, blocker, next_step, phase, updated_at
+         FROM demands
+         WHERE (title LIKE ?1 OR description LIKE ?1 OR blocker LIKE ?1 OR next_step LIKE ?1 OR tags LIKE ?1)"
+    );
+    for i in 0..kw_patterns.len() {
+        demand_sql.push_str(&format!(" OR title LIKE ?{p} OR description LIKE ?{p} OR blocker LIKE ?{p} OR next_step LIKE ?{p} OR tags LIKE ?{p}", p = i + 2));
+    }
+    demand_sql.push_str(" LIMIT 20");
+
+    if let Ok(mut demand_stmt) = conn.prepare(&demand_sql) {
+        if let Ok(demand_rows) = demand_stmt.query_map(params.as_slice(), |row| {
+            let id: String = row.get(0)?;
+            let title: String = row.get(1)?;
+            let description: Option<String> = row.get(2)?;
+            let blocker: Option<String> = row.get(3)?;
+            let updated_at: i64 = row.get(6)?;
+            let date_str = chrono::DateTime::from_timestamp(updated_at, 0)
+                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "".to_string());
+
+            let snippet = if let Some(b) = blocker {
+                format!("⚠ 卡点: {}", b)
+            } else if let Some(d) = description {
+                format!("📝 需求描述: {}", d)
+            } else {
+                title.clone()
+            };
+
+            Ok(EnhancedDemandSearchResult {
+                id: id.clone(),
+                demand_id: Some(id.clone()),
+                demand_title: title.clone(),
+                node_id: None,
+                node_title: None,
+                node_type: Some("demand".to_string()),
+                phase: row.get(5)?,
+                match_type: "demand".to_string(),
+                file_name: None,
+                file_path: None,
+                snippet,
+                is_key_conclusion: false,
+                date: date_str,
+            })
+        }) {
+            for r in demand_rows.flatten() {
+                if !results.iter().any(|item| item.demand_id == r.demand_id && item.match_type == "demand") {
+                    results.push(r);
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+// ── 保存剪贴板图片至需求目录命令 ──────────────────────────────────────
+
+#[tauri::command]
+pub async fn save_clipboard_image(
+    base64_data: String,
+    demand_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose};
+    let conn = state.db.lock().map_err(|e| format!("DB lock error: {}", e))?;
+
+    let clean_b64 = if let Some(idx) = base64_data.find(',') {
+        &base64_data[idx + 1..]
+    } else {
+        &base64_data
+    };
+
+    let bytes = general_purpose::STANDARD
+        .decode(clean_b64)
+        .map_err(|e| format!("Base64 decode error: {}", e))?;
+
+    let now = chrono::Local::now();
+    let file_name = format!("chat_screenshot_{}.png", now.format("%Y%m%d_%H%M%S"));
+
+    let vault_base = resolve_vault_base_path(&conn, None);
+    let target_dir = if let Some(ref did) = demand_id {
+        if !did.trim().is_empty() {
+            let demand_title: String = conn
+                .query_row(
+                    "SELECT title FROM demands WHERE id = ?1",
+                    rusqlite::params![did],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "Demand".to_string());
+
+            let clean_title: String = demand_title
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                .collect();
+
+            vault_base.join("Demands").join(format!("{}_{}", did, clean_title)).join("docs")
+        } else {
+            let month_str = now.format("%Y-%m").to_string();
+            vault_base.join("Attachments").join(month_str)
+        }
+    } else {
+        let month_str = now.format("%Y-%m").to_string();
+        vault_base.join("Attachments").join(month_str)
+    };
+
+    fs::create_dir_all(&target_dir).map_err(|e| format!("Create dir error: {}", e))?;
+    let target_file = target_dir.join(&file_name);
+    fs::write(&target_file, bytes).map_err(|e| format!("Write screenshot file error: {}", e))?;
+
+    Ok(target_file.to_string_lossy().to_string())
 }

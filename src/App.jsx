@@ -43,7 +43,8 @@ const Icons = {
   toolbox: <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.34C18 2.54 15.46 0 12.34 0c-1.48 0-2.84.58-3.84 1.53L7 3H4C2.9 3 2 3.9 2 5v14c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-8-3.86C13.34 2.51 14 3.38 14 4.66c0 .44-.09.85-.24 1.34H10.5l1.5-3.86zM11 8l-2 5h2l-1 5 5-7h-3l2-3h-3z"/></svg>,
   translate: <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>,
   convert: <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>,
-  settings: <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96a6.97 6.97 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z"/></svg>
+  settings: <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96a6.97 6.97 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z"/></svg>,
+  asset_board: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
 };
 
 function App() {
@@ -183,27 +184,63 @@ function App() {
   const handleArchiveConfirm = async (data) => {
     console.log('[Archive] 归档数据:', data);
     try {
-      const result = await invoke('archive_file', {
-        input: {
-          title: data.title || '',
-          project: data.project || null,
-          priority: data.priority || null,
-          durationMin: data.duration ? parseInt(data.duration, 10) : null,
-          output: data.output || null,
-          blocker: data.blocker || null,
-          nextAction: data.nextAction || null,
-          tags: data.tags || [],
-          linkedFiles: data.files || [],
-          customVaultPath: data.customVaultPath || null,
-          // 需求看板扩展字段
-          demandId: data.demandId || null,
-          nodeType: data.nodeType || null,
-          isKeyConclusion: data.isKeyConclusion || false,
+      if (window.__TAURI_INTERNALS__) {
+        const result = await invoke('archive_file', {
+          input: {
+            title: data.title || '',
+            project: data.project || null,
+            priority: data.priority || null,
+            durationMin: data.duration ? parseInt(data.duration, 10) : null,
+            output: data.output || null,
+            blocker: data.blocker || null,
+            nextAction: data.nextAction || null,
+            tags: data.tags || [],
+            linkedFiles: data.files || [],
+            customVaultPath: data.customVaultPath || null,
+            // 需求看板扩展字段
+            demandId: data.demandId || null,
+            nodeType: data.nodeType || null,
+            isKeyConclusion: data.isKeyConclusion || false,
+            demandStatus: data.demandStatus || null,
+          }
+        });
+        console.log('[Archive] 归档成功:', result);
+      } else {
+        if (data.demandId) {
+          const local = JSON.parse(localStorage.getItem('web_demands') || '[]');
+          const updated = local.map(d => {
+            if (d.id === data.demandId) {
+              return {
+                ...d,
+                next_step: data.nextAction ? data.nextAction.trim() : d.next_step,
+                status: data.demandStatus === 'done' ? 'done' : data.demandStatus === 'hold' ? 'hold' : data.demandStatus === 'active' ? 'doing' : d.status,
+              };
+            }
+            return d;
+          });
+          localStorage.setItem('web_demands', JSON.stringify(updated));
         }
-      });
-      console.log('[Archive] 归档成功:', result);
+      }
+
+      // 若是从待办卡片右下角【完成】按钮拉起且用户提交，自动标记完成该 Todo
+      if (data.completedTodoItem) {
+        try {
+          const todo = data.completedTodoItem;
+          if (todo.is_custom) {
+            if (window.__TAURI_INTERNALS__) {
+              await invoke('complete_custom_todo', { id: todo.id });
+            }
+          } else if (todo.demand_id) {
+            if (window.__TAURI_INTERNALS__) {
+              await invoke('complete_demand_todo', { demandId: todo.demand_id });
+            }
+          }
+        } catch (err) {
+          console.warn('Completed todo auto-archive error:', err);
+        }
+      }
       setArchiveContext(null);
-      // 归档成功：关闭弹窗 → 刷新时间线
+      // 归档成功：关闭弹窗 → 刷新时间线与待办列表
       setShowArchiveFromCluster(false);
       setShowQuickArchive(false);
       setArchiveRefreshKey(prev => prev + 1);
@@ -357,6 +394,10 @@ function App() {
   };
 
   const handleNavClick = (nav) => {
+    // 点击需求看板时，自动收缩左侧导航栏，为看板提供全屏大视窗空间
+    if (nav === 'archive_timeline') {
+      setIsSidebarCollapsed(true);
+    }
     if (tabs.length === 0) {
       const newId = `tab_${Date.now()}`;
       setTabs([{ id: newId, currentNav: nav, searchQuery: '', previewFile: null, viewMode: 'columns' }]);
@@ -430,7 +471,7 @@ function App() {
     desktop: { name: '桌面', icon: Icons.desktop },
     download: { name: '下载', icon: Icons.download },
     wechat: { name: '微信文件', icon: Icons.wechat },
-    qq: { name: '办公文件', icon: Icons.qq },
+    qq: { name: 'QQ文件', icon: Icons.qq },
     pc: { name: '此电脑', icon: Icons.pc },
     cloud: { name: '个人云盘', icon: Icons.cloud },
     smart_folders: { name: '智能文件夹', icon: Icons.folder },
@@ -548,7 +589,7 @@ function App() {
                 { id: 'download', name: '下载', icon: Icons.download },
                 { id: 'desktop', name: '桌面', icon: Icons.desktop },
                 { id: 'wechat', name: '微信文件', icon: Icons.wechat },
-                { id: 'qq', name: '办公文件', icon: Icons.qq },
+                { id: 'qq', name: 'QQ文件', icon: Icons.qq },
                 { id: 'pc', name: '此电脑', icon: Icons.pc },
               ].map(item => {
                 const isActive = currentNav === item.id && !searchQuery;
@@ -711,7 +752,7 @@ function App() {
             <ul style={{ display: 'flex', flexDirection: 'column', gap: '1px', padding: 0, margin: 0, listStyle: 'none' }}>
               {[
                 { id: 'archive_timeline', name: '需求看板', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/></svg>, badgeColor: '#059669' },
-                { id: 'asset_board', name: '智能资产沉淀', icon: <span style={{ fontSize: '16px', display: 'flex', alignItems: 'center' }}>💎</span>, badgeColor: '#6366f1' },
+                { id: 'asset_board', name: '智能资产沉淀', icon: Icons.asset_board, badgeColor: '#6366f1' },
                 { id: 'translate', name: '文档翻译', icon: Icons.translate, badgeColor: '#3b82f6' },
                 { id: 'cleanup', name: '垃圾清理', icon: Icons.clean, badgeColor: '#10b981' },
                 { id: 'convert', name: '格式转换', icon: Icons.convert, badgeColor: '#f59e0b' },
@@ -982,11 +1023,11 @@ function App() {
             ) : currentNav === 'archive_timeline' ? (
               <>
                 <DemandKanbanView
-                  key={archiveRefreshKey}
+                  key="demand_kanban_view"
                   refreshKey={archiveRefreshKey}
                   onOpenArchiveModal={(demandCtx) => {
-                    if (demandCtx && demandCtx.demandId) {
-                      setArchiveContext({ demandId: demandCtx.demandId, demandTitle: demandCtx.demandTitle });
+                    if (demandCtx) {
+                      setArchiveContext(demandCtx);
                     }
                     setShowQuickArchive(true);
                   }}
@@ -1080,7 +1121,7 @@ function App() {
           onClose={() => { setShowQuickArchive(false); setArchiveContext(null); }}
           onConfirm={handleArchiveConfirm}
           prefill={archiveContext}
-          demandContext={archiveContext?.demandId ? { demandId: archiveContext.demandId, demandTitle: archiveContext.demandTitle } : null}
+          demandContext={archiveContext}
         />
       )}
 

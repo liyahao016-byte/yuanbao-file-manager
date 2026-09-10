@@ -1977,6 +1977,8 @@ pub fn run() {
         move_files_to_staging,
         get_file_icons_batch,
         open_file_with_app,
+        open_file_in_default_app,
+        show_in_folder,
         generate_smart_group_name,
         create_aggregate_folder,
         reveal_in_finder,
@@ -2006,12 +2008,25 @@ pub fn run() {
         archive::delete_archive_node,
         archive::create_demand,
         archive::update_demand,
+        archive::get_latest_demand_node_meta,
         archive::query_demands,
         archive::delete_demand,
         archive::add_demand_doc_link,
         archive::remove_demand_doc_link,
         archive::query_demand_nodes,
         archive::migrate_projects_to_demands,
+        archive::query_demand_todos,
+        archive::search_demands_fuzzy,
+        archive::search_demands_enhanced,
+        archive::save_clipboard_image,
+        archive::create_custom_todo,
+        archive::update_todo_date,
+        archive::update_todo_item,
+        archive::delete_todo_item,
+        archive::complete_custom_todo,
+        archive::complete_demand_todo,
+        archive::query_completed_todos,
+        archive::delete_completed_todo,
         asset::create_asset_task,
         asset::delete_asset_task,
         asset::list_asset_tasks,
@@ -2283,15 +2298,85 @@ async fn export_files(paths: Vec<String>, dest_dir: String) -> Result<(), String
 
 #[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
+    show_in_folder(path)
+}
+
+#[tauri::command]
+fn show_in_folder(path: String) -> Result<(), String> {
     use std::process::Command;
-    let status = Command::new("open")
-        .arg("-R")
-        .arg(&path)
-        .status();
-    match status {
-        Ok(st) if st.success() => Ok(()),
-        Ok(_) => Err("无法在 Finder 中定位该文件".to_string()),
-        Err(e) => Err(format!("命令执行失败: {}", e)),
+    use std::path::Path;
+
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("文件路径不存在: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("open").arg("-R").arg(&path).status();
+        match status {
+            Ok(st) if st.success() => Ok(()),
+            Ok(_) => Err("无法在 Finder 中定位该文件".to_string()),
+            Err(e) => Err(format!("无法拉起 Finder: {}", e)),
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let status = Command::new("explorer").arg(format!("/select,\"{}\"", path)).status();
+        match status {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("无法在文件管理器中定位该文件: {}", e)),
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let parent = p.parent().unwrap_or(p);
+        let status = Command::new("xdg-open").arg(parent).status();
+        match status {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("无法在文件管理器中打开路径: {}", e)),
+        }
+    }
+}
+
+#[tauri::command]
+fn open_file_in_default_app(path: String) -> Result<(), String> {
+    use std::process::Command;
+    use std::path::Path;
+
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("文件不存在: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("open").arg(&path).status();
+        match status {
+            Ok(st) if st.success() => Ok(()),
+            Ok(_) => Err("无法用默认程序打开该文件".to_string()),
+            Err(e) => Err(format!("无法拉起默认程序: {}", e)),
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let status = Command::new("cmd").args(["/C", "start", "", &path]).status();
+        match status {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("无法用默认程序打开文件: {}", e)),
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let status = Command::new("xdg-open").arg(&path).status();
+        match status {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("无法用默认程序打开文件: {}", e)),
+        }
     }
 }
 

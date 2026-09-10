@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 
 /**
  * DemandDetailPanel — 需求详情侧边面板
@@ -38,7 +39,7 @@ function parseNextActionField(raw) {
   return { text: String(raw).trim(), date: '' };
 }
 
-export default function DemandDetailPanel({ demand, onClose, onUpdate, onOpenArchiveModal, onBack, mode = 'sidebar' }) {
+export default function DemandDetailPanel({ demand, onClose, onUpdate, onOpenArchiveModal, onBack, mode = 'sidebar', refreshKey = 0 }) {
   const [nodes, setNodes] = useState([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
   const [editField, setEditField] = useState(null); // 当前正在编辑的字段
@@ -69,9 +70,30 @@ export default function DemandDetailPanel({ demand, onClose, onUpdate, onOpenArc
     }
   }, [demand?.id]);
 
-  useEffect(() => { loadNodes(); }, [loadNodes]);
+  useEffect(() => { loadNodes(); }, [loadNodes, refreshKey]);
 
-  // ── 拖拽调宽（main 模式右侧手柄 / sidebar 模式左侧手柄） ──
+  // ── 需求名称重命名 ──
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitleText, setEditingTitleText] = useState('');
+
+  const handleSaveTitle = async () => {
+    const trimmed = editingTitleText.trim();
+    if (!trimmed || !demand) {
+      setIsEditingTitle(false);
+      return;
+    }
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        await invoke('update_demand', { input: { id: demand.id, title: trimmed } });
+      }
+      demand.title = trimmed;
+      setIsEditingTitle(false);
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error('Update demand title failed:', err);
+      alert('修改需求名称失败：' + (err?.message || err));
+    }
+  };
   // side: 'right'（main 模式，手柄在右侧，向右拖=宽度增）
   //       'left'（sidebar 模式，手柄在左侧，向左拖=宽度增）
   const handleMouseDown = (e, side = 'left') => {
@@ -189,10 +211,71 @@ export default function DemandDetailPanel({ demand, onClose, onUpdate, onOpenArc
                 border: `1px solid ${demand.priority === 'P0' ? '#fecaca' : demand.priority === 'P2' ? '#bbf7d0' : '#fde68a'}`,
                 flexShrink: 0,
               }}>{demand.priority || 'P1'}</span>
-              <h3 style={{
-                fontSize: isMain ? 20 : 16, fontWeight: 700, color: '#1f2937', margin: 0,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{demand.title}</h3>
+              {isEditingTitle ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                  <input
+                    type="text"
+                    value={editingTitleText}
+                    onChange={e => setEditingTitleText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleSaveTitle();
+                      if (e.key === 'Escape') setIsEditingTitle(false);
+                    }}
+                    autoFocus
+                    style={{
+                      flex: 1, fontSize: isMain ? 17 : 14, fontWeight: 700, color: '#0f172a',
+                      padding: '3px 8px', borderRadius: 6, border: '1.5px solid #6366f1',
+                      outline: 'none', background: '#ffffff',
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveTitle}
+                    style={{
+                      padding: '3px 8px', fontSize: 11, fontWeight: 600,
+                      background: '#2563eb', color: '#ffffff', border: 'none',
+                      borderRadius: 6, cursor: 'pointer', flexShrink: 0,
+                    }}
+                  >保存</button>
+                  <button
+                    onClick={() => setIsEditingTitle(false)}
+                    style={{
+                      padding: '3px 8px', fontSize: 11, fontWeight: 500,
+                      background: '#ffffff', color: '#64748b', border: '1px solid #cbd5e1',
+                      borderRadius: 6, cursor: 'pointer', flexShrink: 0,
+                    }}
+                  >取消</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', flex: 1, minWidth: 0 }}>
+                  <h3
+                    onDoubleClick={() => { setEditingTitleText(demand.title || ''); setIsEditingTitle(true); }}
+                    title="双击或点击右侧按钮可修改需求名称"
+                    style={{
+                      fontSize: isMain ? 20 : 16, fontWeight: 700, color: '#1f2937', margin: 0,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer',
+                    }}
+                  >
+                    {demand.title}
+                  </h3>
+                  <button
+                    onClick={() => { setEditingTitleText(demand.title || ''); setIsEditingTitle(true); }}
+                    title="双击标题或点击此处修改需求名称"
+                    style={{
+                      border: 'none', background: 'transparent',
+                      cursor: 'pointer', color: '#94a3b8', padding: '3px',
+                      borderRadius: 4, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#4f46e5'; e.currentTarget.style.background = '#eef2ff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <span style={{
@@ -232,6 +315,9 @@ export default function DemandDetailPanel({ demand, onClose, onUpdate, onOpenArc
           onCancelEdit={() => setEditField(null)}
           onChange={setEditValue}
         />
+
+        {/* ── 在线文档与参考链接收纳区 ── */}
+        <DocLinksSection demand={demand} onUpdate={onUpdate} />
 
         {/* ── B. 推进时间线 ── 节点内容完整直接展示，每节点带可删除按钮 */}
         <TimelineSection
@@ -522,9 +608,11 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
   const isKey = node.isKeyConclusion;
   const hasDetail = node.output || node.blocker || node.nextAction;
 
-  // 进入编辑模式 — 预填表单
+  const [editFiles, setEditFiles] = useState([]);
+
+  // 进入编辑模式 — 预填表单与附件
   const handleStartEdit = (e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     const na = parseNextActionField(node.nextAction);
     setEditForm({
       title: node.title || '',
@@ -532,7 +620,9 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
       blocker: node.blocker || '',
       nextAction: na.text,
       nextActionDate: na.date,
+      nodeType: node.nodeType || 'progress',
     });
+    setEditFiles(node.linkedFiles || []);
     setEditing(true);
   };
 
@@ -542,22 +632,63 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
     setEditing(false);
   };
 
-  // 保存编辑（调用 update_archive，仅更新支持的字段）
+  const handleAddFiles = async () => {
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const selected = await open({ multiple: true, title: '选择关联文档与聊天截图' });
+        if (selected) {
+          const paths = Array.isArray(selected) ? selected : [selected];
+          setEditFiles(prev => [...new Set([...prev, ...paths])]);
+        }
+      }
+    } catch (err) {
+      console.error('Select file error:', err);
+    }
+  };
+
+  const handlePasteNode = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const blob = items[i].getAsFile();
+        if (!blob) continue;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          const base64Data = evt.target.result;
+          try {
+            if (window.__TAURI_INTERNALS__) {
+              const savedPath = await invoke('save_clipboard_image', {
+                base64Data,
+                demandId: node.demandId || null,
+              });
+              setEditFiles(prev => [...new Set([...prev, savedPath])]);
+            }
+          } catch (err) {
+            console.error('Failed to save clipboard image:', err);
+          }
+        };
+        reader.readAsDataURL(blob);
+      }
+    }
+  };
+
+  // 保存编辑（调用 update_archive，包含附件与存储闭环）
   const handleSaveEdit = async (e) => {
     e?.stopPropagation?.();
     if (saving) return;
     setSaving(true);
     try {
-      // 下一步：若选择了日期，格式化为 [YYYY-MM-DD] 文本
-      const nextActionStr = editForm.nextAction.trim()
-        ? (editForm.nextActionDate ? `[${editForm.nextActionDate}] ${editForm.nextAction.trim()}` : editForm.nextAction.trim())
-        : null;
+      const nextActionStr = editForm.nextAction.trim() || null;
       await invoke('update_archive', {
         archiveId: node.id,
         title: editForm.title,
         output: editForm.output,
         blocker: editForm.blocker,
         nextAction: nextActionStr,
+        linkedFiles: editFiles,
+        nodeType: editForm.nodeType,
       });
       setEditing(false);
       if (onUpdated) onUpdated();
@@ -586,6 +717,7 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
 
   return (
     <div
+      id={`demand-node-${node.id}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { setHover(false); if (confirming && !deleting) setConfirming(false); }}
       style={{
@@ -609,10 +741,38 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
           <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
             {node.date} {node.time}
           </span>
-          <span style={{
-            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-            background: `${nt.color}14`, color: nt.color,
-          }}>{nt.icon} {nt.label}</span>
+          {editing ? (
+            <select
+              value={editForm.nodeType}
+              onChange={e => setEditForm(prev => ({ ...prev, nodeType: e.target.value }))}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 6px', borderRadius: 8,
+                border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155',
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              <option value="progress">🟢 正常推进</option>
+              <option value="blocker">🟡 Hold / 暂停</option>
+              <option value="completion">🎉 全量上线</option>
+              <option value="需求调研">💡 需求调研</option>
+              <option value="确认技术方案">🛠️ 确认技术方案</option>
+              <option value="设计对稿">🎨 设计对稿</option>
+              <option value="讲需求开发">💻 讲需求开发</option>
+              <option value="走查测试">🧪 走查测试</option>
+              <option value="发布">🚀 发布</option>
+            </select>
+          ) : (
+            <span
+              onClick={handleStartEdit}
+              title="点击可编辑修改节点类型"
+              style={{
+                fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+                background: `${nt.color}14`, color: nt.color, cursor: 'pointer',
+              }}
+            >
+              {nt.icon} {nt.label}
+            </span>
+          )}
           {isKey && (
             <span style={{
               fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
@@ -795,6 +955,44 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
               />
             </div>
           </div>
+          {/* 关联附件与截图管理 */}
+          <div onPaste={handlePasteNode} style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 6, marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>📎 关联文档与截图 (支持 Cmd+V 粘贴聊天截图)</span>
+              <button
+                type="button"
+                onClick={handleAddFiles}
+                style={{
+                  fontSize: 10, padding: '2px 8px', borderRadius: 4,
+                  border: '1px solid #cbd5e1', background: '#fff', color: '#334155',
+                  cursor: 'pointer', fontWeight: 500,
+                }}
+              >+ 添加文件</button>
+            </div>
+            {editFiles.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {editFiles.map((fp, idx) => {
+                  const fn = fp.split('/').pop() || fp.split('\\').pop() || fp;
+                  const isImg = /\.(png|jpg|jpeg|gif|bmp|webp|svg)$/i.test(fn);
+                  return (
+                    <div key={idx} style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '3px 8px', borderRadius: 6,
+                      background: isImg ? '#eff6ff' : '#f1f5f9',
+                      border: `1px solid ${isImg ? '#bfdbfe' : '#e2e8f0'}`,
+                      fontSize: 11, color: isImg ? '#1d4ed8' : '#475569',
+                    }}>
+                      <span>{isImg ? '🖼️' : '📄'} {fn}</span>
+                      <span
+                        onClick={() => setEditFiles(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ cursor: 'pointer', color: '#94a3b8', marginLeft: 4, fontWeight: 700 }}
+                      >×</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         hasDetail && (
@@ -818,7 +1016,7 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
               <div style={{
                 color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe',
                 padding: '6px 10px', borderRadius: 6, fontWeight: 500,
-              }}>➤ 下一步: {node.nextAction}</div>
+              }}>➤ 下一步: {node.nextAction.replace(/^\[\d{4}-\d{2}-\d{2}\]\s*/, '')}</div>
             )}
           </div>
         )
@@ -842,7 +1040,9 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
           marginTop: 8, paddingTop: 8,
           borderTop: '1px dashed #e5e7eb',
         }}>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 500 }}>📎 附件</div>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 500 }}>
+            📎 附件（双击卡片直接打开文件）
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {node.linkedFiles.map((filePath, fi) => {
               const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
@@ -850,31 +1050,234 @@ function TimelineNodeCard({ node, onDeleted, onUpdated }) {
               return (
                 <div
                   key={fi}
-                  onClick={() => {
-                    if (window.__TAURI_INTERNALS__) {
-                      invoke('open_file_in_default_app', { path: filePath }).catch(console.error);
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (window.__TAURI_INTERNALS__ || window.__TAURI__) {
+                      invoke('open_file_in_default_app', { path: filePath }).catch(err => {
+                        alert('打开文件失败: ' + err);
+                      });
+                    } else {
+                      alert('【Web模式】双击打开文件:\n' + filePath);
                     }
                   }}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '4px 8px', borderRadius: 6,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 10px', borderRadius: 6,
                     background: isImage ? '#eef2ff' : '#f3f4f6',
                     border: `1px solid ${isImage ? '#c7d2fe' : '#e5e7eb'}`,
                     cursor: 'pointer', fontSize: 11,
-                    color: isImage ? '#4338ca' : '#6b7280',
+                    color: isImage ? '#4338ca' : '#374151',
                     maxWidth: '100%', overflow: 'hidden',
-                    transition: 'background 0.15s',
+                    transition: 'all 0.15s',
+                    userSelect: 'none',
                   }}
                   onMouseEnter={e => e.currentTarget.style.background = isImage ? '#dbeafe' : '#e5e7eb'}
                   onMouseLeave={e => e.currentTarget.style.background = isImage ? '#eef2ff' : '#f3f4f6'}
-                  title={`点击打开: ${filePath}`}
+                  title={`双击：使用默认程序打开文件\n点击右侧[定位]：在文件管理器中定位选中\n路径：${filePath}`}
                 >
                   <span>{isImage ? '🖼' : '📄'}</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileName}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{fileName}</span>
+                  <span
+                    title="在系统文件管理器中定位"
+                    style={{
+                      fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                      background: '#fff', border: '1px solid #d1d5db', color: '#4b5563',
+                      fontWeight: 500, display: 'inline-flex', alignItems: 'center',
+                      cursor: 'pointer', flexShrink: 0
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.__TAURI_INTERNALS__ || window.__TAURI__) {
+                        invoke('show_in_folder', { path: filePath }).catch(err => alert('定位失败: ' + err));
+                      } else {
+                        alert('【Web模式】已定位文件路径:\n' + filePath);
+                      }
+                    }}
+                  >
+                    定位
+                  </span>
                 </div>
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 在线文档与参考链接收纳区 ─────────────────────────────────
+function DocLinksSection({ demand, onUpdate }) {
+  const [adding, setAdding] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+
+  const docLinks = demand?.docLinks || [];
+
+  const handleAddLink = async () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed || !demand) return;
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const added = await invoke('add_demand_doc_link', {
+          demandId: demand.id,
+          url: trimmed,
+          name: trimmed,
+        });
+        if (!demand.docLinks) demand.docLinks = [];
+        demand.docLinks.unshift(added);
+      } else {
+        if (!demand.docLinks) demand.docLinks = [];
+        demand.docLinks.unshift({ id: 'mock_' + Date.now(), name: trimmed, url: trimmed });
+      }
+      setUrlInput('');
+      setAdding(false);
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error('Failed to add doc link:', err);
+      alert('添加在线文档链接失败：' + (err?.message || err));
+    }
+  };
+
+  const handleRemoveLink = async (item) => {
+    const linkId = typeof item === 'object' && item ? item.id : null;
+    const linkUrl = typeof item === 'object' && item ? item.url : item;
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        await invoke('remove_demand_doc_link', { id: linkId, demandId: demand.id, url: linkUrl });
+      }
+      if (demand && demand.docLinks) {
+        demand.docLinks = demand.docLinks.filter(l => (typeof l === 'object' && l ? l.url : l) !== linkUrl);
+      }
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error('Failed to remove link:', err);
+    }
+  };
+
+  const openLink = (link) => {
+    const urlStr = typeof link === 'object' && link ? link.url : link;
+    if (!urlStr) return;
+    if (window.__TAURI_INTERNALS__) {
+      invoke('open_file_in_default_app', { path: urlStr }).catch(() => {
+        window.open(urlStr, '_blank');
+      });
+    } else {
+      window.open(urlStr, '_blank');
+    }
+  };
+
+  const getLinkMeta = (link) => {
+    const urlStr = typeof link === 'object' && link ? link.url : String(link || '');
+    if (urlStr.includes('docs.qq.com') || urlStr.includes('doc.weixin.qq.com')) {
+      return { icon: '📄', label: '腾讯文档', bg: '#eff6ff', color: '#1d4ed8' };
+    }
+    if (urlStr.includes('feishu.cn') || urlStr.includes('larksuite.com')) {
+      return { icon: '📘', label: '飞书文档', bg: '#ecfdf5', color: '#047857' };
+    }
+    if (urlStr.includes('figma.com')) {
+      return { icon: '🎨', label: 'Figma', bg: '#faf5ff', color: '#7e22ce' };
+    }
+    return { icon: '🌐', label: '在线链接', bg: '#f8fafc', color: '#475569' };
+  };
+
+  return (
+    <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafbfc' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>🔗</span> 在线文档与参考链接 ({docLinks.length})
+        </span>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            style={{
+              fontSize: 11, fontWeight: 600, color: '#2563eb', background: '#eef2ff',
+              border: 'none', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+            }}
+          >
+            + 添加链接
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <input
+            type="text"
+            placeholder="粘贴腾讯文档 / 网页链接 (例如 https://docs.qq.com/doc/...)"
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddLink()}
+            autoFocus
+            style={{
+              flex: 1, fontSize: 12, padding: '5px 10px', borderRadius: 6,
+              border: '1.5px solid #6366f1', outline: 'none', background: '#fff',
+            }}
+          />
+          <button
+            onClick={handleAddLink}
+            style={{
+              fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6,
+              background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer',
+            }}
+          >
+            保存
+          </button>
+          <button
+            onClick={() => { setAdding(false); setUrlInput(''); }}
+            style={{
+              fontSize: 11, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
+              background: '#fff', color: '#64748b', border: '1px solid #cbd5e1', cursor: 'pointer',
+            }}
+          >
+            取消
+          </button>
+        </div>
+      )}
+
+      {docLinks.length === 0 ? (
+        <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
+          暂无关联在线文档链接，点击右上方按键添加腾讯文档/网盘/设计稿链接
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {docLinks.map((item, idx) => {
+            const meta = getLinkMeta(item);
+            const urlStr = typeof item === 'object' && item ? item.url : String(item || '');
+            const displayName = typeof item === 'object' && item && item.name ? item.name : urlStr.replace(/^https?:\/\//, '');
+
+            return (
+              <div
+                key={typeof item === 'object' && item && item.id ? item.id : idx}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                  borderRadius: 8, background: meta.bg, border: `1px solid ${meta.color}30`,
+                  fontSize: 11, fontWeight: 600, color: meta.color,
+                }}
+              >
+                <span>{meta.icon}</span>
+                <span
+                  onClick={() => openLink(item)}
+                  title={`点击在系统浏览器打开: ${urlStr}`}
+                  style={{
+                    cursor: 'pointer', textDecoration: 'underline',
+                    maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {meta.label}: {displayName}
+                </span>
+                <span style={{ fontSize: 10, cursor: 'pointer', opacity: 0.7 }} onClick={() => openLink(item)}>↗</span>
+                <span
+                  onClick={() => handleRemoveLink(item)}
+                  title="移除链接"
+                  style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4, fontSize: 12 }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                  onMouseLeave={e => e.currentTarget.style.opacity = 0.5}
+                >
+                  ×
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

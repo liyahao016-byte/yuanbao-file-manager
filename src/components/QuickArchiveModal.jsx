@@ -13,6 +13,20 @@ import { open } from '@tauri-apps/plugin-dialog';
  * 5. 表单自动填入 AI 推荐内容
  * 6. 用户微调后确认归档
  */
+
+// 简易日期提取工具
+const extractTodoAndDate = (text) => {
+  const dateRegex = /(\d{4}-\d{2}-\d{2}|\d{2}-\d{2})/;
+  const match = text.match(dateRegex);
+  if (match) {
+    return {
+      text: text.replace(match[0], '').trim(),
+      dueDate: match[0].includes('-') ? match[0] : new Date().getFullYear() + '-' + match[0]
+    };
+  }
+  return { text, dueDate: '' };
+};
+
 export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandContext }) {
   // 表单状态 — 如果传入 prefill 则用其内容预填（来源可以是任意需要预填表单的场景）
   const [title, setTitle] = useState(prefill?.text || '');
@@ -26,14 +40,15 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   // Todo 列表（支持多条待办，每条可选日期）
-  const [todos, setTodos] = useState([{ text: '', dueDate: '' }]);
+  const [todos, setTodos] = useState([]);
 
   // 附件
   const [attachments, setAttachments] = useState([]);
 
   // ── 需求看板扩展字段 ──
   const [demandId, setDemandId] = useState(demandContext?.demandId || '');
-  const [nodeType, setNodeType] = useState('progress');
+  const [nodeType, setNodeType] = useState(demandContext?.nodeType || 'progress');
+  const [demandStatus, setDemandStatus] = useState(demandContext?.demandStatus || (demandContext?.nodeType === 'completion' ? 'done' : 'active'));
   const [isKeyConclusion, setIsKeyConclusion] = useState(false);
   const [demandsList, setDemandsList] = useState([]);
 
@@ -69,6 +84,36 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
   const titleParseTimerRef = useRef(null);
   const lastParsedTitleRef = useRef(''); // 避免重复解析同一标题
   const recordingTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (demandContext) {
+      if (demandContext.demandId) setDemandId(demandContext.demandId);
+      if (demandContext.nodeType) setNodeType(demandContext.nodeType);
+      if (demandContext.demandStatus) setDemandStatus(demandContext.demandStatus);
+      else if (demandContext.nodeType === 'completion') setDemandStatus('done');
+      if (demandContext.title !== undefined) setTitle(demandContext.title);
+      if (demandContext.defaultContent !== undefined) setOutput(demandContext.defaultContent);
+      if (demandContext.blocker !== undefined) setBlocker(demandContext.blocker);
+      if (demandContext.demandName) setProject(demandContext.demandName);
+
+      // ── 需求 4 闭环：拉起弹窗时自动继承该需求上个节点的标签与归档路径 ──
+      if (window.__TAURI_INTERNALS__ && demandContext.demandId) {
+        invoke('get_latest_demand_node_meta', { demandId: demandContext.demandId })
+          .then(meta => {
+            if (meta) {
+              if (meta.tags && meta.tags.length > 0) {
+                setTags(meta.tags);
+              }
+              if (meta.custom_vault_path) {
+                setCustomVaultPath(meta.custom_vault_path);
+                setUseCustomPath(true);
+              }
+            }
+          })
+          .catch(err => console.warn('Inherit node meta error:', err));
+      }
+    }
+  }, [demandContext]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -113,10 +158,16 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
       if (result.output) setOutput(result.output);
       if (result.blocker) setBlocker(result.blocker);
       if (result.nextAction) {
-        // 将 nextAction 拆入 todos
+        // 将 nextAction 拆入 todos 并解析可能的日期
         const lines = result.nextAction.split(/[;；\n]/).filter(l => l.trim());
         if (lines.length > 0) {
-          setTodos(lines.map(l => ({ text: l.trim(), dueDate: '' })));
+          setTodos(lines.map(l => {
+            const parsed = extractTodoAndDate(l);
+            return {
+              text: parsed ? parsed.text : l.trim(),
+              dueDate: parsed ? parsed.dueDate : '',
+            };
+          }));
         }
       }
       if (result.tags && result.tags.length > 0) setTags(result.tags);
@@ -379,8 +430,14 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
           }
           if (parsed.nextAction) {
             const lines = String(parsed.nextAction).split(/[;；\n]/).filter(l => l.trim());
-            if (lines.length > 0 && todos.length === 1 && !todos[0].text.trim()) {
-              setTodos(lines.map(l => ({ text: l.trim(), dueDate: '' })));
+            if (lines.length > 0) {
+              setTodos(lines.map(l => {
+                const p = extractTodoAndDate(l);
+                return {
+                  text: p ? p.text : l.trim(),
+                  dueDate: p ? p.dueDate : '',
+                };
+              }));
             }
           }
           if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0) {
@@ -503,6 +560,120 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
     if (prefillDone) setUserEdited(prev => ({ ...prev, [field]: true }));
   };
 
+  // ── 智能解析文本中的下一步待办与日期 ──
+  const extractTodoAndDate = (text) => {
+    if (!text || typeof text !== 'string') return null;
+    const clean = text.trim();
+    if (!clean) return null;
+
+    // 1. 拆分为独立句子，优先选取既有动作/指令关键词又包含明确日期/时间的句子
+    const sentences = clean.split(/[。\n;；!！]/).map(s => s.trim()).filter(Boolean);
+    let actionSentence = '';
+
+    // 第一优先：既有时间词，又有行动指令（如 "明天7.15前需尽力修复这些主要功能问题"）
+    for (const s of sentences) {
+      if (/(明天|后天|下周|\d{1,2}[\.\/\-]\d{1,2}|月|日)/i.test(s) && /(需|要|跟进|下一步|计划|修复|上线|完成|排期|准备|提交|联调|测试|整改|落实|尽力)/i.test(s)) {
+        actionSentence = s;
+        break;
+      }
+    }
+
+    // 第二优先：含有明确行动指令
+    if (!actionSentence) {
+      for (const s of sentences) {
+        if (/(需|要|跟进|下一步|计划|修复|上线|完成|排期|准备|提交|联调|测试|整改|落实|尽力)/i.test(s)) {
+          actionSentence = s;
+          break;
+        }
+      }
+    }
+
+    // 若无明确动词关键词，但句中有明确时间标记，选取第一句
+    if (!actionSentence && sentences.length > 0) {
+      if (/(明天|后天|下周|月|日|\d{1,2}[\.\/\-]\d{1,2})/i.test(clean)) {
+        actionSentence = sentences[0];
+      }
+    }
+
+    if (!actionSentence) return null;
+
+    // 2. 日期提取逻辑
+    let parsedDueDate = '';
+    const now = new Date();
+    const year = now.getFullYear();
+
+    // (A) 相对日期
+    if (/明天/i.test(actionSentence) || /明天/i.test(clean)) {
+      const tmr = new Date(now);
+      tmr.setDate(tmr.getDate() + 1);
+      parsedDueDate = tmr.toISOString().split('T')[0];
+    } else if (/后天/i.test(actionSentence) || /后天/i.test(clean)) {
+      const dayAfter = new Date(now);
+      dayAfter.setDate(dayAfter.getDate() + 2);
+      parsedDueDate = dayAfter.toISOString().split('T')[0];
+    } else if (/下周/i.test(actionSentence) || /下周/i.test(clean)) {
+      const dayOfWeek = now.getDay() || 7;
+      const daysUntilNextMon = 8 - dayOfWeek;
+      const nextMon = new Date(now);
+      nextMon.setDate(nextMon.getDate() + daysUntilNextMon);
+      parsedDueDate = nextMon.toISOString().split('T')[0];
+    }
+
+    // (B) 完整年月日：YYYY-MM-DD / YYYY.MM.DD / YYYY/MM/DD
+    if (!parsedDueDate) {
+      const fullDateMatch = actionSentence.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})/);
+      if (fullDateMatch) {
+        const y = fullDateMatch[1];
+        const m = String(fullDateMatch[2]).padStart(2, '0');
+        const d = String(fullDateMatch[3]).padStart(2, '0');
+        parsedDueDate = `${y}-${m}-${d}`;
+      }
+    }
+
+    // (C) 月日格式：M.D前 / M月D日 / M/D (例: 7.15前, 7月15日, 09/15)
+    if (!parsedDueDate) {
+      const mdMatch = actionSentence.match(/(\d{1,2})[\.\/\-月](\d{1,2})(?:日|号|前|\s|$)/);
+      if (mdMatch) {
+        const m = String(mdMatch[1]).padStart(2, '0');
+        const d = String(mdMatch[2]).padStart(2, '0');
+        parsedDueDate = `${year}-${m}-${d}`;
+      }
+    }
+
+    // 3. 提纯待办核心文本 (去掉时间词与动词引导词)
+    let todoText = actionSentence
+      .replace(/(明天|后天|大后天|下周[一二三四五六日]?|\d{4}[\.\/\-]\d{1,2}[\.\/\-]\d{1,2}|\d{1,2}[\.\/\-月]\d{1,2}(?:日|号|前)?)/gi, '')
+      .replace(/^(前|需|要|尽力|计划|下一步|跟进|预计|在)+/i, '')
+      .trim();
+
+    if (todoText.length < 2) {
+      todoText = actionSentence.trim();
+    }
+
+    return {
+      text: todoText,
+      dueDate: parsedDueDate
+    };
+  };
+
+  // 实时解析内容 (output) 中的下一步行动与时间
+  useEffect(() => {
+    if (userEdited.nextAction) return; // 用户已手动调整时尊重用户输入
+    if (!output || !output.trim()) {
+      if (demandContext?.completedTodoItem) return;
+      setTodos([]);
+      return;
+    }
+
+    const parsed = extractTodoAndDate(output);
+    if (parsed && parsed.text) {
+      setTodos([{ text: parsed.text, dueDate: parsed.dueDate }]);
+    } else {
+      // 文本中未提取到明确下一步指令时，不填充虚假数据
+      setTodos([]);
+    }
+  }, [output, userEdited.nextAction, demandContext]);
+
   // ── Todo 列表操作 ──
   const handleTodoChange = (idx, field, value) => {
     setTodos(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
@@ -521,7 +692,7 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
     // 将 todos 合并为 nextAction 字符串
     const nextActionStr = todos
       .filter(t => t.text.trim())
-      .map(t => t.dueDate ? `[${t.dueDate}] ${t.text.trim()}` : t.text.trim())
+      .map(t => t.text.trim())
       .join('\n');
 
     onConfirm?.({
@@ -535,6 +706,8 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
       demandId: demandId || null,
       nodeType: nodeType || 'progress',
       isKeyConclusion,
+      demandStatus: demandId ? demandStatus : null,
+      completedTodoItem: demandContext?.completedTodoItem || null,
     });
   };
 
@@ -557,7 +730,9 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
   }
 
   return (
-    <div style={{
+    <div
+      onPaste={handlePaste}
+      style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 1000,
       display: 'flex', justifyContent: 'center', alignItems: 'center'
@@ -960,34 +1135,39 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
               />
             </div>
 
-            {/* 当前进度（阶段选择） */}
-            <div>
-              <label style={labelStyle}>
-                当前进度
-                <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '11px', marginLeft: '4px' }}>记录产出时所处的阶段</span>
-              </label>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {['需求调研', '方案设计', '评审排期', '开发联调', '测试验收', '灰度上线', '全量上线'].map(phase => {
-                  const isActive = nodeType === phase;
-                  return (
+            {/* 需求看板流转状态（当关联了需求时可直接切换需求状态列） */}
+            {demandId && (
+              <div>
+                <label style={labelStyle}>
+                  需求看板流转状态
+                  <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '11px', marginLeft: '6px' }}>跟随本次记录实时切换需求在看板中的阶段列</span>
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { key: 'active', label: '🟢 正常推进（进行中）' },
+                    { key: 'hold', label: '🟡 Hold / 暂停挂起' },
+                    { key: 'done', label: '✅ 全量上线 / 标记完成' },
+                  ].map(st => (
                     <button
-                      key={phase}
+                      key={st.key}
                       type="button"
-                      onClick={() => setNodeType(isActive ? 'progress' : phase)}
+                      onClick={() => setNodeType(st.key === 'done' ? 'completion' : st.key === 'hold' ? 'blocker' : nodeType)}
+                      onMouseDown={() => setDemandStatus(st.key)}
                       style={{
-                        padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: isActive ? '600' : '400',
-                        border: `1.5px solid ${isActive ? '#6366f1' : '#e2e8f0'}`,
-                        background: isActive ? '#eef2ff' : '#fff',
-                        color: isActive ? '#4338ca' : '#64748b',
+                        flex: 1, padding: '7px 10px', borderRadius: '8px', fontSize: '12px',
+                        fontWeight: demandStatus === st.key ? '600' : '400',
+                        border: `1.5px solid ${demandStatus === st.key ? '#6366f1' : '#e2e8f0'}`,
+                        background: demandStatus === st.key ? '#eef2ff' : '#fff',
+                        color: demandStatus === st.key ? '#4338ca' : '#64748b',
                         cursor: 'pointer', transition: 'all 0.15s',
                       }}
                     >
-                      {phase}
+                      {st.label}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 卡点 */}
             <div>
@@ -1035,10 +1215,19 @@ export default function QuickArchiveModal({ onClose, onConfirm, prefill, demandC
                       onChange={e => handleTodoChange(idx, 'dueDate', e.target.value)}
                       title="选择截止日期"
                       style={{
-                        fontSize: '11px', border: '1px solid #e2e8f0', borderRadius: '4px',
-                        padding: '2px 4px', color: todo.dueDate ? '#475569' : '#cbd5e1',
-                        background: todo.dueDate ? '#f0fdf4' : '#fafbfc',
-                        cursor: 'pointer', width: '120px', flexShrink: 0,
+                        fontSize: '11px',
+                        fontWeight: '500',
+                        border: todo.dueDate ? '1px solid #a7f3d0' : '1.5px solid #cbd5e1',
+                        borderRadius: '6px',
+                        padding: '3px 6px',
+                        color: todo.dueDate ? '#065f46' : '#334155',
+                        background: todo.dueDate ? '#ecfdf5' : '#ffffff',
+                        cursor: 'pointer',
+                        width: '126px',
+                        flexShrink: 0,
+                        outline: 'none',
+                        boxShadow: todo.dueDate ? '0 1px 2px rgba(16,185,129,0.08)' : 'none',
+                        transition: 'all 0.15s ease',
                       }}
                     />
                     {todos.length > 1 && (
